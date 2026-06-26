@@ -260,5 +260,9 @@ ros2_3dcv/
 │   ├── curriculum.json       ← assembled full course (built from phases)
 │   └── schema.json           ← JSON Schema for a module
 ├── frontend/                 ← React + Vite scaffold
-└── backend/                  ← FastAPI scaffold (orchestrator, sandbox, harness, CLI emulator)
+├── backend/                  ← FastAPI gateway (orchestrator, sandbox runner, CLI emulator)
+│   └── sandbox_image/        ← ROS 2 sandbox image + in-container grading harness + grade.py
+└── docker-compose.yml        ← local dev stack
 ```
+
+See `docs/RUNNING.md` for how to build the sandbox image and grade submissions.

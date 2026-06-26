@@ -1,25 +1,26 @@
 """
-Sandbox runner — executes untrusted student code inside an isolated, ephemeral
-ROS 2 container and returns captured output + the harness verdict.
+Host-side sandbox runner — executes untrusted student code inside an isolated,
+ephemeral ROS 2 container and returns captured output + the harness verdict.
 
 SECURITY MODEL (see docs/ARCHITECTURE.md §4):
-  * one throwaway container (or gVisor/Firecracker microVM) per submission
+  * one throwaway container per submission, destroyed on completion
   * no network egress; DDS confined to loopback on a unique ROS_DOMAIN_ID
-  * read-only rootfs except a per-job tmpfs scratch dir
-  * non-root user, dropped caps, no-new-privileges, seccomp
+  * non-root user, dropped caps, no-new-privileges
   * cgroup CPU/mem/PID caps + hard wall-clock timeout, process-group kill
 
-This module shells out to a container runtime. The exact runtime
-(docker/podman/gVisor) is deployment-specific; the command below is illustrative
-and isolated behind run_in_sandbox() so it can be swapped without touching the
-orchestrator.
+The container itself runs backend/sandbox_image (built via its Dockerfile),
+whose entrypoint runs `python3 -m harness <module_id>`. For grading we drop
+solution.py + verification.json into the mounted /job dir; the in-container
+harness launches the student code and emits a VERDICT: line we parse here.
+
+For a non-grading "Run", we instead run the student file directly so the user
+just sees stdout/stderr.
 """
 from __future__ import annotations
 
 import asyncio
 import json
 import os
-import shlex
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -28,7 +29,6 @@ SANDBOX_IMAGE = {
     "humble": "ros2-3dcv-sandbox:humble",
     "jazzy": "ros2-3dcv-sandbox:jazzy",
 }
-# Each submission gets a unique domain id so graphs never collide.
 _DOMAIN_COUNTER = os.getpid() % 100
 
 
@@ -36,7 +36,7 @@ _DOMAIN_COUNTER = os.getpid() % 100
 class SandboxResult:
     stdout: str
     stderr: str
-    verdict_json: dict | None  # structured verdict emitted by harness.py, or None
+    verdict_json: dict | None
     timed_out: bool
     exit_code: int
 
@@ -53,11 +53,10 @@ async def run_in_sandbox(
     module_id: str,
     distro: str,
     timeout_s: int,
+    verification: dict | None = None,
     support_files: dict[str, str] | None = None,
     grade: bool,
 ) -> SandboxResult:
-    """Write code to a scratch dir, run it (optionally with the grading harness)
-    in a locked-down container, and collect results."""
     support_files = support_files or {}
     image = SANDBOX_IMAGE.get(distro, SANDBOX_IMAGE["humble"])
     domain_id = _next_domain_id()
@@ -65,19 +64,12 @@ async def run_in_sandbox(
     with tempfile.TemporaryDirectory(prefix="ros2_3dcv_") as scratch:
         job = Path(scratch)
         (job / "solution.py").write_text(student_code)
+        if verification is not None:
+            (job / "verification.json").write_text(json.dumps(verification))
         for name, content in support_files.items():
             (job / name).write_text(content)
 
-        # The grading entrypoint runs harness.py, which imports/launches the
-        # student's solution and the per-module checks, then prints one JSON
-        # line prefixed with VERDICT: . When not grading we just run solution.py.
-        entry = (
-            f"ros2 run_or_python harness.py {shlex.quote(module_id)}"
-            if grade
-            else "python3 solution.py"
-        )
-
-        cmd = _container_command(image, job, domain_id, entry)
+        cmd = _container_command(image, job, domain_id, module_id, grade)
         proc = await asyncio.create_subprocess_exec(
             *cmd,
             stdout=asyncio.subprocess.PIPE,
@@ -85,7 +77,8 @@ async def run_in_sandbox(
         )
         timed_out = False
         try:
-            out_b, err_b = await asyncio.wait_for(proc.communicate(), timeout=timeout_s + 3)
+            out_b, err_b = await asyncio.wait_for(
+                proc.communicate(), timeout=timeout_s + 25)
         except asyncio.TimeoutError:
             timed_out = True
             proc.kill()
@@ -103,27 +96,28 @@ async def run_in_sandbox(
         )
 
 
-def _container_command(image: str, job: Path, domain_id: int, entry: str) -> list[str]:
-    """Illustrative locked-down container invocation. Swap docker→gVisor/podman
-    per deployment. The flags encode the security model."""
-    inner = (
-        f"export ROS_DOMAIN_ID={domain_id} ROS_LOCALHOST_ONLY=1; "
-        f"cd /job && timeout -s KILL {30} bash -lc {shlex.quote(entry)}"
-    )
-    return [
+def _container_command(image: str, job: Path, domain_id: int,
+                       module_id: str, grade: bool) -> list[str]:
+    """Locked-down container invocation. Swap docker→gVisor/podman per
+    deployment; the flags encode the security model. The image ENTRYPOINT is
+    the grading harness; for a plain "Run" we override it to just exec the
+    student file so the user sees raw output."""
+    base = [
         "docker", "run", "--rm",
-        "--network", "none",                 # no egress
-        "--read-only",                        # rootfs read-only
-        "--tmpfs", "/job:rw,exec,size=64m",  # scratch (rosbag output etc.)
-        "--user", "1000:1000",
+        "--network", "none",
         "--cap-drop", "ALL",
         "--security-opt", "no-new-privileges",
         "--pids-limit", "256",
         "--memory", "512m", "--cpus", "1.0",
-        "-v", f"{job}:/job_src:ro",          # source mounted read-only; copied into tmpfs by entry
-        image,
-        "bash", "-lc", f"cp -r /job_src/* /job/ && {inner}",
+        "-e", f"ROS_DOMAIN_ID={domain_id}",
+        "-v", f"{job}:/job:rw",
     ]
+    if grade:
+        return [*base, image, module_id]
+    # Non-grading run: override entrypoint to source ROS and run solution.py.
+    run_cmd = ("source /opt/ros/$ROS_DISTRO/setup.bash && "
+               "timeout -s KILL 15 python3 /job/solution.py")
+    return [*base, "--entrypoint", "bash", image, "-lc", run_cmd]
 
 
 def _truncate(s: str, limit: int = 32_000) -> str:

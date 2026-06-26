@@ -21,7 +21,9 @@ backend that runs real ROS 2.
 | `curriculum/phase{1,2,3}.json` | The phases (source for the assembled `curriculum.json`). |
 | `curriculum/schema.json` | JSON Schema for a module. |
 | `frontend/` | React + Vite scaffold: course map, lesson viewer, Monaco editor, xterm terminal, WebGL viz panel. |
-| `backend/` | FastAPI scaffold: submission orchestrator, locked-down sandbox runner, in-sandbox grading harness, simulated `ros2` CLI, viz WebSocket. |
+| `backend/` | FastAPI scaffold: submission orchestrator, locked-down sandbox runner, simulated `ros2` CLI, viz WebSocket. |
+| `backend/sandbox_image/` | The Docker grading stack: ROS 2 sandbox image + the real in-container grading harness (one driver per module) + a local `grade.py` CLI. |
+| `docs/RUNNING.md` | How to build the sandbox image and grade solutions locally. |
 
 ## Curriculum
 
@@ -38,21 +40,26 @@ ground truth** and asserting the student's output exactly (see each module's
 
 ## Run it locally
 
+Full build/grade instructions are in [`docs/RUNNING.md`](docs/RUNNING.md). Quick version:
+
 ```bash
-# backend (gateway only; ROS lives in the sandbox image)
-cd backend && pip install -r requirements.txt && uvicorn main:app --reload
+# 1. build the ROS 2 sandbox image (used to run/grade every submission)
+cd backend/sandbox_image && make build          # ros2-3dcv-sandbox:humble
 
-# build the sandbox image (real ROS 2; used to run/grade submissions)
-docker build -f backend/sandbox.Dockerfile --build-arg DISTRO=humble \
-  -t ros2-3dcv-sandbox:humble backend
+# 2. grade a solution against the real container (no web app needed)
+python3 grade.py module-8                        # reference solution
+python3 grade.py module-8 ~/my_attempt.py        # your own file
+make grade-all                                   # every module end-to-end
 
-# frontend
-cd frontend && npm install && npm run dev   # proxies /api and /ws to :8000
+# 3. (optional) run the whole web app
+cd ../.. && docker compose up --build            # web :5173, api :8000
 ```
 
-> The scaffolds are a working skeleton with the security model, grading
-> contract, and data flow fully specified in `docs/ARCHITECTURE.md`. The
-> curriculum content is complete and production-ready.
+> The curriculum content is complete and production-ready. The Docker grading
+> stack (`backend/sandbox_image/`) is fully implemented — one driver per module
+> injecting known ground truth — and statically verified, but has **not** been
+> executed end-to-end here (no Docker daemon / ROS image in this environment).
+> See the caveat in `docs/RUNNING.md`.
 
 ## Safety
 

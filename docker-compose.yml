@@ -1,0 +1,32 @@
+# Local dev stack for ros2_3dcv.
+#
+#   1. build the sandbox image (the thing that runs/grades submissions):
+#        docker build -f backend/sandbox_image/Dockerfile \
+#          --build-arg DISTRO=humble -t ros2-3dcv-sandbox:humble backend/sandbox_image
+#   2. docker compose up
+#
+# The api service spawns one ros2-3dcv-sandbox container PER submission, so it
+# needs access to the host Docker daemon (docker-out-of-docker). The socket
+# mount below grants that. In production, run sandboxes via a dedicated,
+# locked-down worker pool (gVisor/Firecracker) rather than the host daemon.
+services:
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./curriculum:/app/curriculum:ro
+      - /var/run/docker.sock:/var/run/docker.sock  # spawn sandbox containers
+    environment:
+      - SANDBOX_DISTRO=humble
+
+  web:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "5173:5173"
+    depends_on:
+      - api

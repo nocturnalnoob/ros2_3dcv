@@ -73,6 +73,7 @@ async def grade_submission(req: SubmitRequest, module: Module) -> Verdict:
         module_id=req.moduleId,
         distro=req.distro,
         timeout_s=module.verification.timeoutSeconds,
+        verification=module.verification.model_dump(),
         support_files=module.exercise.supportFiles,
         grade=True,
     )
