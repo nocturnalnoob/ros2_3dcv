@@ -1,0 +1,828 @@
+{
+  "course": "3D Computer Vision + ROS 2",
+  "rosDistros": [
+    "humble",
+    "jazzy"
+  ],
+  "phases": [
+    {
+      "phase": 1,
+      "title": "Core ROS 2 Mechanics (rclpy)"
+    },
+    {
+      "phase": 2,
+      "title": "ROS 2 Computer Vision & Perception"
+    },
+    {
+      "phase": 3,
+      "title": "ROS 2 Tools, Visualization & Ecosystem"
+    }
+  ],
+  "modules": [
+    {
+      "id": "module-1",
+      "phase": 1,
+      "order": 1,
+      "title": "ROS 2 Architecture & Nodes",
+      "topic": "How ROS 2 organizes a robot into independent processes called nodes that discover and talk to each other over a DDS-based communication graph.",
+      "estimatedMinutes": 30,
+      "learningObjectives": [
+        "Explain what a ROS 2 node is and how it differs from a plain Python script.",
+        "Describe the roles of the ROS 2 graph, DDS, and the rclpy client library.",
+        "Initialize the rclpy context, define a Node subclass, and use the node logger.",
+        "Run a node headless through the standard init/spin/destroy/shutdown lifecycle."
+      ],
+      "lesson": {
+        "markdown": "# ROS 2 Architecture & Nodes\n\nIf you just finished a 2D computer vision course, you are used to writing one big Python script: load image, run model, print result, exit. A robot does not work like that. A robot is many small programs running at once -- one reading a camera, one running your detector, one driving the wheels, one watching the battery. ROS 2 is the plumbing that lets all these programs run as separate processes and still cooperate.\n\n## The node: ROS 2's unit of work\n\nA **node** is a single participant in the system. Think of it like one microservice. Each node does one job (e.g. `camera_driver`, `object_detector`, `motor_controller`). Crucially, nodes are *not* function calls inside one program -- they are independent processes that can live on different machines, start and stop at different times, and crash without taking everything else down. That isolation is the whole point.\n\nIn Python you create a node by subclassing `rclpy.node.Node`:\n\n```python\nfrom rclpy.node import Node\n\nclass DetectorNode(Node):\n    def __init__(self):\n        super().__init__('object_detector')  # the node's name in the graph\n```\n\nThe string `'object_detector'` is the node's identity on the network. Other nodes find it by that name.\n\n## The graph: who is talking to whom\n\nAll the running nodes plus the connections between them form the **ROS 2 graph**. Picture a diagram of bubbles (nodes) connected by arrows (topics, services, actions). At runtime you can ask the system \"who is on the graph right now?\" and \"what is each node offering?\" This live introspection is something you never had in a single CV script, and it is how debugging tools work.\n\n## DDS: the postal service underneath\n\nHow do separate processes find each other with no central master? ROS 2 delegates that to **DDS** (Data Distribution Service), an industrial pub/sub middleware. DDS does automatic **discovery**: when your node starts, it broadcasts \"I exist and I offer X,\" and other nodes hear it. You almost never call DDS directly -- it is the postal service that quietly delivers your messages. You write Python; DDS moves the bytes.\n\n## rclpy: your Python steering wheel\n\n**rclpy** is the ROS 2 Client Library for Python. It is the API you actually type against. The non-negotiable lifecycle is:\n\n```python\nimport rclpy\n\ndef main(args=None):\n    rclpy.init(args=args)        # 1. start the ROS context / connect to DDS\n    node = DetectorNode()        # 2. create your node\n    rclpy.spin(node)             # 3. hand control to ROS so callbacks fire\n    node.destroy_node()          # 4. clean up the node\n    rclpy.shutdown()             # 5. tear down the context\n```\n\n`rclpy.init()` boots the middleware context. `rclpy.spin(node)` blocks and keeps the node alive, pumping its callbacks forever (use `spin_once(node)` to process exactly one round and return -- handy for short-lived scripts). `destroy_node()` and `shutdown()` release resources cleanly.\n\n## Logging instead of print\n\nInside a node, do not use `print()`. Use the node's logger:\n\n```python\nself.get_logger().info('System initialized')\n```\n\nThis routes through ROS's logging system (severity levels, timestamps, the node name) and shows up in the console and in tooling. It is the robot equivalent of structured logs.\n\n## Your exercise\n\nWrite a node class that calls `super().__init__('system_node')` and, in its constructor, logs `System initialized` via `self.get_logger().info(...)`. Wire up the standard `main()` with `rclpy.init()`, create the node, give it a brief spin, then `destroy_node()` and `rclpy.shutdown()`, guarded by `if __name__ == '__main__'`."
+      },
+      "exercise": {
+        "prompt": "Create a node class that inherits from rclpy.node.Node, names itself 'system_node', and logs the exact text 'System initialized' from its constructor using the node's logger. Complete the main() function with the standard rclpy lifecycle so the node runs headless and exits cleanly.",
+        "type": "python",
+        "editorLanguage": "python",
+        "starterCode": "import rclpy\nfrom rclpy.node import Node\n\n\nclass SystemNode(Node):\n    def __init__(self):\n        # TODO: call the parent constructor with the node name 'system_node'\n        # TODO: log the exact message 'System initialized' using self.get_logger().info(...)\n        pass\n\n\ndef main(args=None):\n    # TODO: initialize rclpy\n    # TODO: create a SystemNode instance\n    # TODO: process one spin cycle (spin_once) so the node is alive briefly\n    # TODO: destroy the node and shut down rclpy\n    pass\n\n\nif __name__ == '__main__':\n    main()\n",
+        "solutionCode": "import rclpy\nfrom rclpy.node import Node\n\n\nclass SystemNode(Node):\n    def __init__(self):\n        super().__init__('system_node')\n        self.get_logger().info('System initialized')\n\n\ndef main(args=None):\n    rclpy.init(args=args)\n    node = SystemNode()\n    rclpy.spin_once(node, timeout_sec=0.1)\n    node.destroy_node()\n    rclpy.shutdown()\n\n\nif __name__ == '__main__':\n    main()\n",
+        "supportFiles": {}
+      },
+      "verification": {
+        "strategy": "composite",
+        "humanDescription": "Passed means your script started a node called 'system_node' and logged the exact phrase 'System initialized', and the node was actually present on the ROS 2 graph while running.",
+        "checks": [
+          {
+            "kind": "stdout_contains",
+            "description": "Confirms the logger emitted the required initialization message.",
+            "params": {
+              "text": "System initialized"
+            }
+          },
+          {
+            "kind": "node_exists",
+            "description": "Confirms a node named 'system_node' joined the ROS 2 graph.",
+            "params": {
+              "name": "system_node"
+            }
+          }
+        ],
+        "timeoutSeconds": 15,
+        "harnessNotes": "The harness runs the student script as a subprocess inside the sandbox with a sourced ROS 2 environment. It captures both stdout and stderr (rcutils logging is emitted on stderr by default, so the harness merges the two streams before matching) and applies the stdout_contains check against the combined buffer. Concurrently, before the student script exits, the harness runs a sibling rclpy 'probe' node that calls get_node_names() in a short poll loop (up to ~5s) and asserts 'system_node' appears. Because the student uses spin_once, the harness slightly slows the probe by injecting a small startup barrier and may re-run with rclpy.spin for one short window if discovery is racy; both the log line and graph presence must be observed for a pass."
+      }
+    },
+    {
+      "id": "module-2",
+      "phase": 1,
+      "order": 2,
+      "title": "Topics (Continuous Data Streams)",
+      "topic": "How nodes broadcast and consume continuous streams of data using the publish/subscribe pattern over topics, tuned by QoS profiles.",
+      "estimatedMinutes": 35,
+      "learningObjectives": [
+        "Explain the publish/subscribe model and how topics decouple producers from consumers.",
+        "Create a publisher that emits std_msgs/msg/String on a fixed-rate timer.",
+        "Create a subscriber with a callback that reacts to each incoming message.",
+        "Reason about QoS profiles and depth, and why they matter for streaming data."
+      ],
+      "lesson": {
+        "markdown": "# Topics: Continuous Data Streams\n\nIn your CV work, a video stream was just frames arriving one after another. ROS 2 **topics** are exactly that idea generalized: a named channel down which a stream of messages flows continuously. A laser scanner, an IMU at 200 Hz, a camera at 30 fps -- all of these are topics.\n\n## Publish / Subscribe: nobody waits for anybody\n\nThe pattern is **pub/sub**. A **publisher** node sends messages onto a topic. Any number of **subscriber** nodes listen on that topic and get a copy. The key property: the publisher does **not** know or care who is listening. It just shouts onto the channel. Subscribers can come and go. This decoupling is why you can attach a logger or a visualizer to a live robot without changing the robot's code.\n\nContrast this with a function call, where the caller waits for the callee. Pub/sub is **fire-and-forget** and **asynchronous** -- perfect for sensor data that should keep flowing whether or not anyone is currently consuming it.\n\n## A topic has a name and a type\n\nEvery topic has a string name (like `/chatter`) and a fixed message **type**. Both ends must agree on the type or DDS will not connect them. For text we use the standard message:\n\n```python\nfrom std_msgs.msg import String\nmsg = String()\nmsg.data = 'hello'\n```\n\n## The publisher side\n\nYou create a publisher and then push messages, usually on a **timer** so the rate is controlled:\n\n```python\nclass Talker(Node):\n    def __init__(self):\n        super().__init__('talker')\n        self.pub = self.create_publisher(String, 'chatter', 10)\n        # fire every 0.5s -> 2 Hz\n        self.timer = self.create_timer(0.5, self.tick)\n        self.count = 0\n\n    def tick(self):\n        msg = String()\n        msg.data = f'Hello ROS 2: {self.count}'\n        self.pub.publish(msg)\n        self.get_logger().info(f'Publishing: {msg.data}')\n        self.count += 1\n```\n\nThe `10` is the **queue depth** -- how many outgoing messages to buffer. The timer period `0.5` seconds gives **2 Hz**. Timers are the idiomatic way to do periodic work in ROS 2; you do not write your own `while True: sleep()` loop, because that would block the executor.\n\n## The subscriber side\n\nA subscriber registers a **callback** that ROS calls every time a message arrives:\n\n```python\nclass Listener(Node):\n    def __init__(self):\n        super().__init__('listener')\n        self.sub = self.create_subscription(String, 'chatter', self.on_msg, 10)\n\n    def on_msg(self, msg):\n        self.get_logger().info(f'I heard: {msg.data}')\n```\n\nYou never call `on_msg` yourself -- the executor does, while you `rclpy.spin(node)`.\n\n## QoS: the dial that tunes the channel\n\n**Quality of Service (QoS)** profiles let you tune how DDS delivers messages. The two settings to know first:\n\n- **Reliability**: `RELIABLE` retries until delivered (good for commands); `BEST_EFFORT` drops rather than waits (good for high-rate sensor data where the latest frame matters more than every frame).\n- **History / depth**: keep the last *N* messages (`KEEP_LAST` with depth) vs. keep everything (`KEEP_ALL`).\n\nThe plain integer `10` you pass is shorthand for a default profile with `KEEP_LAST` depth 10. For finer control:\n\n```python\nfrom rclpy.qos import QoSProfile, ReliabilityPolicy\nqos = QoSProfile(depth=10, reliability=ReliabilityPolicy.BEST_EFFORT)\n```\n\nA mismatch (publisher RELIABLE, subscriber BEST_EFFORT or vice versa in an incompatible way) can silently prevent connection -- a classic beginner trap.\n\n## Your exercise\n\nBuild one program containing a **publisher** that emits `std_msgs/msg/String` at **2 Hz** via a timer, and a **subscriber** on the same topic whose callback logs what it receives. Spin so both run together, then clean up with the standard lifecycle."
+      },
+      "exercise": {
+        "prompt": "Write a single program with two nodes: a Talker that publishes std_msgs/msg/String messages on the topic 'chatter' at exactly 2 Hz using a timer callback, and a Listener that subscribes to 'chatter' and logs each message it receives. Spin both nodes together using a MultiThreadedExecutor (or by adding both to an executor) and tear everything down cleanly.",
+        "type": "python",
+        "editorLanguage": "python",
+        "starterCode": "import rclpy\nfrom rclpy.node import Node\nfrom rclpy.executors import MultiThreadedExecutor\nfrom std_msgs.msg import String\n\n\nclass Talker(Node):\n    def __init__(self):\n        super().__init__('talker')\n        # TODO: create a publisher of type String on topic 'chatter' with depth 10\n        # TODO: create a timer that fires every 0.5 seconds (2 Hz) calling self.tick\n        self.count = 0\n\n    def tick(self):\n        # TODO: build a String message, set its .data, publish it, and log it\n        pass\n\n\nclass Listener(Node):\n    def __init__(self):\n        super().__init__('listener')\n        # TODO: create a subscription to String on topic 'chatter' with depth 10\n        #       whose callback is self.on_msg\n        pass\n\n    def on_msg(self, msg):\n        # TODO: log the received message data\n        pass\n\n\ndef main(args=None):\n    rclpy.init(args=args)\n    talker = Talker()\n    listener = Listener()\n    executor = MultiThreadedExecutor()\n    executor.add_node(talker)\n    executor.add_node(listener)\n    try:\n        # TODO: spin the executor so both nodes run\n        pass\n    except KeyboardInterrupt:\n        pass\n    finally:\n        talker.destroy_node()\n        listener.destroy_node()\n        rclpy.shutdown()\n\n\nif __name__ == '__main__':\n    main()\n",
+        "solutionCode": "import rclpy\nfrom rclpy.node import Node\nfrom rclpy.executors import MultiThreadedExecutor\nfrom std_msgs.msg import String\n\n\nclass Talker(Node):\n    def __init__(self):\n        super().__init__('talker')\n        self.pub = self.create_publisher(String, 'chatter', 10)\n        self.timer = self.create_timer(0.5, self.tick)\n        self.count = 0\n\n    def tick(self):\n        msg = String()\n        msg.data = f'Hello ROS 2: {self.count}'\n        self.pub.publish(msg)\n        self.get_logger().info(f'Publishing: {msg.data}')\n        self.count += 1\n\n\nclass Listener(Node):\n    def __init__(self):\n        super().__init__('listener')\n        self.sub = self.create_subscription(String, 'chatter', self.on_msg, 10)\n\n    def on_msg(self, msg):\n        self.get_logger().info(f'I heard: {msg.data}')\n\n\ndef main(args=None):\n    rclpy.init(args=args)\n    talker = Talker()\n    listener = Listener()\n    executor = MultiThreadedExecutor()\n    executor.add_node(talker)\n    executor.add_node(listener)\n    try:\n        executor.spin()\n    except KeyboardInterrupt:\n        pass\n    finally:\n        talker.destroy_node()\n        listener.destroy_node()\n        rclpy.shutdown()\n\n\nif __name__ == '__main__':\n    main()\n",
+        "supportFiles": {}
+      },
+      "verification": {
+        "strategy": "composite",
+        "humanDescription": "Passed means your program actually publishes String messages on 'chatter' at about 2 Hz and your subscriber receives and logs them.",
+        "checks": [
+          {
+            "kind": "topic_published",
+            "description": "Confirms messages are flowing on the 'chatter' topic.",
+            "params": {
+              "topic": "chatter"
+            }
+          },
+          {
+            "kind": "topic_msg_type",
+            "description": "Confirms the topic carries std_msgs/msg/String.",
+            "params": {
+              "topic": "chatter",
+              "expected": "std_msgs/msg/String"
+            }
+          },
+          {
+            "kind": "rate_approx",
+            "description": "Confirms the publish rate is approximately 2 Hz.",
+            "params": {
+              "topic": "chatter",
+              "hz": 2.0,
+              "tolerance": 0.4
+            }
+          },
+          {
+            "kind": "stdout_contains",
+            "description": "Confirms the subscriber callback ran and logged a received message.",
+            "params": {
+              "text": "I heard:"
+            }
+          }
+        ],
+        "timeoutSeconds": 15,
+        "harnessNotes": "Because the student script blocks on executor.spin(), the harness launches it as a subprocess and runs for a bounded window (about 6 seconds) before sending SIGINT to break the spin via the KeyboardInterrupt path. While it runs, the harness spawns a sibling rclpy 'probe' node that creates its own subscription to 'chatter' (matching std_msgs/msg/String, depth 10), counts the messages it receives, and timestamps them. It computes the empirical rate as (count-1)/(last_ts-first_ts) and asserts it falls within 2.0 +/- 0.4 Hz; it reads the publisher's declared type via get_topic_names_and_types() to satisfy the type check. The merged stdout/stderr buffer is scanned for 'I heard:' to prove the student's own subscriber callback fired. All four checks must pass."
+      }
+    },
+    {
+      "id": "module-3",
+      "phase": 1,
+      "order": 3,
+      "title": "Services (Synchronous Requests)",
+      "topic": "How nodes make blocking request/response calls to each other using services, the ROS 2 equivalent of a remote procedure call.",
+      "estimatedMinutes": 35,
+      "learningObjectives": [
+        "Distinguish a service (request/response) from a topic (continuous stream).",
+        "Define a service server with a callback that fills in a response.",
+        "Use the example_interfaces/srv/AddTwoInts service type correctly.",
+        "Understand how a client sends a request and waits for the result."
+      ],
+      "lesson": {
+        "markdown": "# Services: Synchronous Requests\n\nTopics are great for streams, but sometimes you want to *ask a question and wait for an answer*: \"What is the current map?\", \"Reset the odometry,\" \"Add these two numbers.\" That is a **service** -- ROS 2's version of a remote procedure call (RPC).\n\n## Service vs. topic in one sentence\n\nA **topic** is a firehose nobody waits on; a **service** is a phone call where the caller waits for a reply. Use a service when there is exactly one logical answer to a one-shot request, and the caller needs that answer before continuing.\n\n## The request/response shape\n\nA service type bundles two structures: a **Request** (what the caller sends) and a **Response** (what the server returns). We will use a ready-made type from `example_interfaces`:\n\n```\nexample_interfaces/srv/AddTwoInts\n---------------------------------\nint64 a       # request\nint64 b       # request\n---\nint64 sum     # response\n```\n\nThe `---` line separates request fields (top) from response fields (bottom). In Python you import the whole service type and ROS gives you `.Request` and `.Response` nested classes automatically.\n\n## Building a server\n\nA **server** advertises a named service and registers a callback. The callback receives a filled-in `request`, fills in the `response`, and returns it:\n\n```python\nfrom example_interfaces.srv import AddTwoInts\n\nclass AdderServer(Node):\n    def __init__(self):\n        super().__init__('adder_server')\n        self.srv = self.create_service(\n            AddTwoInts, 'add_two_ints', self.handle)\n\n    def handle(self, request, response):\n        response.sum = request.a + request.b\n        self.get_logger().info(\n            f'Incoming: a={request.a} b={request.b} -> sum={response.sum}')\n        return response\n```\n\nNote the callback signature: `(request, response)`. ROS hands you a pre-built `response` object; you set its fields and **return it**. Forgetting to return the response is the single most common bug here.\n\n## How a client calls it\n\nA **client** builds a request and sends it asynchronously, getting back a *future* it can wait on:\n\n```python\nclient = node.create_client(AddTwoInts, 'add_two_ints')\nclient.wait_for_service()           # block until the server exists\nreq = AddTwoInts.Request()\nreq.a, req.b = 3, 4\nfuture = client.call_async(req)\nrclpy.spin_until_future_complete(node, future)\nprint(future.result().sum)          # 7\n```\n\n`wait_for_service()` is important: if you call before the server is up, the request goes nowhere. `call_async` plus `spin_until_future_complete` is the safe modern pattern -- it keeps the executor pumping while waiting, avoiding deadlocks. (Never call the synchronous `client.call()` from inside a callback; it can deadlock the single-threaded executor.)\n\n## Why \"synchronous\" from the caller's view\n\nThough the transport is async under the hood, the *experience* is synchronous: send a request, block until the one matching response comes back, then continue. That request/response pairing -- one in, one out -- is what makes services feel like ordinary function calls across process boundaries.\n\n## Your exercise\n\nWrite a service **server** node that advertises `add_two_ints` using `example_interfaces/srv/AddTwoInts`. In the callback, set `response.sum = request.a + request.b`, log the operation, and return the response. Spin the node so it stays available, and clean up with the standard lifecycle. The grader will act as the client and call your service with known numbers."
+      },
+      "exercise": {
+        "prompt": "Implement a service server node named 'adder_server' that offers a service called 'add_two_ints' of type example_interfaces/srv/AddTwoInts. In the service callback, compute the sum of request.a and request.b, store it in response.sum, log it, and return the response. Spin the node so it stays available to clients.",
+        "type": "python",
+        "editorLanguage": "python",
+        "starterCode": "import rclpy\nfrom rclpy.node import Node\nfrom example_interfaces.srv import AddTwoInts\n\n\nclass AdderServer(Node):\n    def __init__(self):\n        super().__init__('adder_server')\n        # TODO: create a service of type AddTwoInts named 'add_two_ints'\n        #       whose callback is self.handle\n        pass\n\n    def handle(self, request, response):\n        # TODO: set response.sum to request.a + request.b\n        # TODO: log the request and computed sum\n        # TODO: return the response (do not forget this!)\n        pass\n\n\ndef main(args=None):\n    rclpy.init(args=args)\n    node = AdderServer()\n    try:\n        rclpy.spin(node)\n    except KeyboardInterrupt:\n        pass\n    finally:\n        node.destroy_node()\n        rclpy.shutdown()\n\n\nif __name__ == '__main__':\n    main()\n",
+        "solutionCode": "import rclpy\nfrom rclpy.node import Node\nfrom example_interfaces.srv import AddTwoInts\n\n\nclass AdderServer(Node):\n    def __init__(self):\n        super().__init__('adder_server')\n        self.srv = self.create_service(AddTwoInts, 'add_two_ints', self.handle)\n        self.get_logger().info('add_two_ints service ready')\n\n    def handle(self, request, response):\n        response.sum = request.a + request.b\n        self.get_logger().info(\n            f'Incoming request: a={request.a} b={request.b} -> sum={response.sum}')\n        return response\n\n\ndef main(args=None):\n    rclpy.init(args=args)\n    node = AdderServer()\n    try:\n        rclpy.spin(node)\n    except KeyboardInterrupt:\n        pass\n    finally:\n        node.destroy_node()\n        rclpy.shutdown()\n\n\nif __name__ == '__main__':\n    main()\n",
+        "supportFiles": {}
+      },
+      "verification": {
+        "strategy": "composite",
+        "humanDescription": "Passed means a service called 'add_two_ints' of the correct type is available and, when called with two numbers, returns their correct sum.",
+        "checks": [
+          {
+            "kind": "service_available",
+            "description": "Confirms the 'add_two_ints' service is advertised with the AddTwoInts type.",
+            "params": {
+              "service": "add_two_ints",
+              "expected": "example_interfaces/srv/AddTwoInts"
+            }
+          },
+          {
+            "kind": "introspection",
+            "description": "Confirms the server returns the correct sum for injected inputs.",
+            "params": {
+              "service": "add_two_ints",
+              "a": 41,
+              "b": 1,
+              "expected_sum": 42
+            }
+          },
+          {
+            "kind": "stdout_contains",
+            "description": "Confirms the server callback executed and logged the operation.",
+            "params": {
+              "text": "sum=42"
+            }
+          }
+        ],
+        "timeoutSeconds": 15,
+        "harnessNotes": "The student script blocks on rclpy.spin(), so the harness runs it as a subprocess and lets it advertise the service. The harness then spawns a sibling rclpy 'probe' client node that calls create_client(AddTwoInts, 'add_two_ints'), waits up to ~5s with wait_for_service(), and verifies via get_service_names_and_types() that the type is example_interfaces/srv/AddTwoInts. It builds AddTwoInts.Request(a=41, b=1), calls call_async, and uses spin_until_future_complete to retrieve the result, asserting future.result().sum == 42. It also injects a second pair (a=10, b=20) and checks sum==30 to guard against hardcoding. The merged stdout/stderr is scanned for 'sum=42' to confirm the student's own logging ran. After probing, the harness sends SIGINT to stop the server. All checks must pass."
+      }
+    },
+    {
+      "id": "module-4",
+      "phase": 1,
+      "order": 4,
+      "title": "Actions (Long-Running Tasks)",
+      "topic": "How nodes manage long-running, preemptible tasks with goals, streaming feedback, and a final result using the ROS 2 action protocol.",
+      "estimatedMinutes": 45,
+      "learningObjectives": [
+        "Explain why long-running tasks need actions instead of topics or services.",
+        "Describe the goal / feedback / result lifecycle of an action.",
+        "Implement an action client that sends a goal and handles the goal-response future.",
+        "Subscribe to streaming feedback and process the final result via callbacks."
+      ],
+      "lesson": {
+        "markdown": "# Actions: Long-Running Tasks\n\nA service is a quick phone call: ask, get one answer, done. But what about a task that takes 30 seconds and that you might want to *cancel* halfway through -- like \"navigate to the kitchen\" or \"compute a long sequence\"? Blocking a service call for 30 seconds is terrible: the caller is frozen, you get no progress updates, and you cannot abort. That is exactly the gap **actions** fill.\n\n## The three parts of an action\n\nAn action has a richer shape than a service:\n\n- **Goal** -- what you want done (e.g. a target pose, or `order = 10`).\n- **Feedback** -- a stream of progress updates while the work runs (e.g. percent complete, the partial sequence so far).\n- **Result** -- the final outcome, delivered once when the task finishes.\n\nThink of ordering food delivery: the **goal** is your order, the **feedback** is the live driver map updating, and the **result** is the food at your door. And critically, you can **cancel** -- actions are *preemptible*.\n\nWe will use a concrete, headless-friendly action type, `action_tutorials_interfaces/action/Fibonacci`:\n\n```\nint32 order        # goal: how many Fibonacci numbers to compute\n---\nint32[] sequence   # result: the full sequence\n---\nint32[] partial_sequence  # feedback: the sequence so far\n```\n\nThe two `---` lines separate goal / result / feedback. This is the canonical learning action: an action *server* slowly builds the sequence, streaming each partial step as feedback, then returns the full sequence as the result.\n\n## The action client lifecycle\n\nYou will write the **client**. The flow is callback-driven:\n\n```python\nimport rclpy\nfrom rclpy.node import Node\nfrom rclpy.action import ActionClient\nfrom action_tutorials_interfaces.action import Fibonacci\n\nclass FibClient(Node):\n    def __init__(self):\n        super().__init__('fib_client')\n        self._client = ActionClient(self, Fibonacci, 'fibonacci')\n\n    def send_goal(self, order):\n        self._client.wait_for_server()\n        goal = Fibonacci.Goal()\n        goal.order = order\n        # feedback_callback fires for every feedback message\n        future = self._client.send_goal_async(\n            goal, feedback_callback=self.on_feedback)\n        future.add_done_callback(self.on_goal_response)\n```\n\nStep by step:\n\n1. **Wait for the server.** `wait_for_server()` ensures the action server exists before you send anything.\n2. **Send the goal.** `send_goal_async(goal, feedback_callback=...)` returns a future for the *goal handle* (whether the goal was accepted), and wires up your feedback callback.\n3. **Handle acceptance.** When the goal-response future completes, check `goal_handle.accepted`; if accepted, ask for the result asynchronously:\n\n```python\n    def on_goal_response(self, future):\n        goal_handle = future.result()\n        if not goal_handle.accepted:\n            self.get_logger().info('Goal rejected')\n            return\n        self.get_logger().info('Goal accepted')\n        result_future = goal_handle.get_result_async()\n        result_future.add_done_callback(self.on_result)\n```\n\n4. **Stream feedback.** Every feedback message lands in your callback while work proceeds:\n\n```python\n    def on_feedback(self, feedback_msg):\n        fb = feedback_msg.feedback\n        self.get_logger().info(f'Feedback: {list(fb.partial_sequence)}')\n```\n\n5. **Handle completion.** When the result future completes, read the final result:\n\n```python\n    def on_result(self, future):\n        result = future.result().result\n        self.get_logger().info(f'Result: {list(result.sequence)}')\n        rclpy.shutdown()\n```\n\n## Why callbacks, not blocking\n\nNotice nothing blocks for the whole task. You `rclpy.spin(node)` and the executor fires `on_goal_response`, then a stream of `on_feedback`, then `on_result`. This non-blocking, event-driven design is what lets a robot keep doing other things (and accept a cancel) while a long task runs.\n\n## Your exercise\n\nWrite a Fibonacci **action client** node. It must wait for the server, send a goal with `order = 10`, log every feedback message it receives, handle goal acceptance/rejection, and log the final result. The grading harness will provide the matching action server."
+      },
+      "exercise": {
+        "prompt": "Implement an action client node named 'fib_client' for action_tutorials_interfaces/action/Fibonacci on the action name 'fibonacci'. It must wait for the server, send a goal with order=10, register a feedback callback that logs each partial sequence, check whether the goal was accepted, and log the final result sequence when the task completes. The grading harness supplies the action server.",
+        "type": "python",
+        "editorLanguage": "python",
+        "starterCode": "import rclpy\nfrom rclpy.node import Node\nfrom rclpy.action import ActionClient\nfrom action_tutorials_interfaces.action import Fibonacci\n\n\nclass FibClient(Node):\n    def __init__(self):\n        super().__init__('fib_client')\n        # TODO: create an ActionClient for Fibonacci on action name 'fibonacci'\n        self._client = None\n\n    def send_goal(self, order):\n        # TODO: wait for the action server\n        # TODO: build a Fibonacci.Goal() and set its .order field\n        # TODO: call send_goal_async with feedback_callback=self.on_feedback\n        # TODO: attach self.on_goal_response as a done callback to the returned future\n        pass\n\n    def on_goal_response(self, future):\n        # TODO: get the goal handle; if not accepted, log and return\n        # TODO: if accepted, log it and call get_result_async()\n        # TODO: attach self.on_result as a done callback to the result future\n        pass\n\n    def on_feedback(self, feedback_msg):\n        # TODO: log feedback_msg.feedback.partial_sequence\n        pass\n\n    def on_result(self, future):\n        # TODO: read future.result().result.sequence and log it\n        # TODO: shut down rclpy\n        pass\n\n\ndef main(args=None):\n    rclpy.init(args=args)\n    node = FibClient()\n    node.send_goal(10)\n    try:\n        rclpy.spin(node)\n    except KeyboardInterrupt:\n        pass\n    finally:\n        node.destroy_node()\n        if rclpy.ok():\n            rclpy.shutdown()\n\n\nif __name__ == '__main__':\n    main()\n",
+        "solutionCode": "import rclpy\nfrom rclpy.node import Node\nfrom rclpy.action import ActionClient\nfrom action_tutorials_interfaces.action import Fibonacci\n\n\nclass FibClient(Node):\n    def __init__(self):\n        super().__init__('fib_client')\n        self._client = ActionClient(self, Fibonacci, 'fibonacci')\n\n    def send_goal(self, order):\n        self._client.wait_for_server()\n        goal = Fibonacci.Goal()\n        goal.order = order\n        self.get_logger().info(f'Sending goal: order={order}')\n        future = self._client.send_goal_async(\n            goal, feedback_callback=self.on_feedback)\n        future.add_done_callback(self.on_goal_response)\n\n    def on_goal_response(self, future):\n        goal_handle = future.result()\n        if not goal_handle.accepted:\n            self.get_logger().info('Goal rejected')\n            rclpy.shutdown()\n            return\n        self.get_logger().info('Goal accepted')\n        result_future = goal_handle.get_result_async()\n        result_future.add_done_callback(self.on_result)\n\n    def on_feedback(self, feedback_msg):\n        fb = feedback_msg.feedback\n        self.get_logger().info(f'Feedback: {list(fb.partial_sequence)}')\n\n    def on_result(self, future):\n        result = future.result().result\n        self.get_logger().info(f'Result: {list(result.sequence)}')\n        rclpy.shutdown()\n\n\ndef main(args=None):\n    rclpy.init(args=args)\n    node = FibClient()\n    node.send_goal(10)\n    try:\n        rclpy.spin(node)\n    except KeyboardInterrupt:\n        pass\n    finally:\n        node.destroy_node()\n        if rclpy.ok():\n            rclpy.shutdown()\n\n\nif __name__ == '__main__':\n    main()\n",
+        "supportFiles": {}
+      },
+      "verification": {
+        "strategy": "composite",
+        "humanDescription": "Passed means your client sent a Fibonacci goal, received and logged streaming feedback, and logged the correct final result sequence.",
+        "checks": [
+          {
+            "kind": "callback_invoked",
+            "description": "Confirms the action server received a goal from the student client.",
+            "params": {
+              "action": "fibonacci",
+              "event": "goal_received"
+            }
+          },
+          {
+            "kind": "stdout_regex",
+            "description": "Confirms the client logged at least one feedback message.",
+            "params": {
+              "pattern": "Feedback: \\[.*\\]"
+            }
+          },
+          {
+            "kind": "stdout_contains",
+            "description": "Confirms the client logged the correct final Fibonacci result for order=10.",
+            "params": {
+              "text": "Result: [0, 1, 1, 2, 3, 5, 8, 13, 21, 34, 55]"
+            }
+          }
+        ],
+        "timeoutSeconds": 15,
+        "harnessNotes": "The harness first launches its own Fibonacci action server (a sibling rclpy node implementing action_tutorials_interfaces/action/Fibonacci on action name 'fibonacci'). The server accepts the goal, computes the sequence incrementally, and publishes a feedback message with partial_sequence after each step (with a short sleep, e.g. 0.3s, so multiple feedback messages are emitted), then returns the full sequence as the result. It records that a goal was received to satisfy the callback_invoked check. The harness then runs the student script as a subprocess; the student client connects, sends order=10, and its callbacks fire. The merged stdout/stderr is scanned for a 'Feedback: [...]' line (regex) proving feedback was handled, and for the exact result line for order=10, which is [0, 1, 1, 2, 3, 5, 8, 13, 21, 34, 55]. The harness bounds the run to the timeout and SIGINTs both processes afterward. All three checks must pass."
+      }
+    },
+    {
+      "id": "module-5",
+      "phase": 1,
+      "order": 5,
+      "title": "Parameters & Launch Contexts",
+      "topic": "How nodes expose runtime-configurable settings as parameters that can be declared, read, and changed externally without editing code.",
+      "estimatedMinutes": 40,
+      "learningObjectives": [
+        "Explain what ROS 2 parameters are and how they differ from hardcoded constants.",
+        "Declare a typed parameter with a default value and read its current value.",
+        "React to external parameter changes using a parameter event callback.",
+        "Understand how launch files and the parameter server set node configuration."
+      ],
+      "lesson": {
+        "markdown": "# Parameters & Launch Contexts\n\nIn your CV scripts, tunable settings like a confidence threshold were probably `THRESHOLD = 0.5` at the top of the file. Change it, re-run. On a robot that is far too rigid: you want to tune `max_velocity` on a *running* robot without restarting it, and you want different values per deployment without editing code. ROS 2 **parameters** are the answer.\n\n## What a parameter is\n\nA **parameter** is a named, typed configuration value that belongs to a node and lives in that node's **parameter server**. Each node holds its own parameters; tools and other nodes can read and set them at runtime. Types are explicit: bool, int, double, string, and arrays of those.\n\nThink of parameters as a node's settings panel that the outside world can adjust while the node runs.\n\n## Declaring and reading\n\nYou must **declare** a parameter (with a default) before using it. Declaring makes it official and type-checked:\n\n```python\nclass DriveNode(Node):\n    def __init__(self):\n        super().__init__('drive_node')\n        self.declare_parameter('max_velocity', 1.0)   # default 1.0 (double)\n\n    def current_max(self):\n        return self.get_parameter('max_velocity').value\n```\n\n`get_parameter(...).value` returns the current value -- which may differ from the default if someone changed it. Reading it *every loop* (not caching it once at startup) is what makes a node respond live to new settings.\n\n## Reacting to external changes\n\nThere are two ways to notice a change. The simplest for a control loop is to just re-read the parameter on each timer tick. The more event-driven way is to register a **parameter callback** that fires whenever someone sets a parameter:\n\n```python\nfrom rcl_interfaces.msg import SetParametersResult\n\nclass DriveNode(Node):\n    def __init__(self):\n        super().__init__('drive_node')\n        self.declare_parameter('max_velocity', 1.0)\n        self.add_on_set_parameters_callback(self.on_param_change)\n\n    def on_param_change(self, params):\n        for p in params:\n            if p.name == 'max_velocity':\n                self.get_logger().info(\n                    f'max_velocity changed to {p.value}')\n        return SetParametersResult(successful=True)\n```\n\nThe callback receives the list of parameters being set, lets you validate/log them, and must return a `SetParametersResult`. Returning `successful=True` accepts the change; returning `False` rejects it -- useful for clamping a velocity to a safe range.\n\n## Who changes parameters from outside\n\nAt runtime you (or another process) can set a parameter with the CLI:\n\n```\nros2 param set /drive_node max_velocity 2.5\n```\n\nThat injection is exactly how the grader will poke your node. In production, the common path is a **launch file**, which starts nodes and hands them parameter values at boot:\n\n```python\nNode(package='my_pkg', executable='drive_node',\n     parameters=[{'max_velocity': 2.0}])\n```\n\nSo the *same* parameter can default in code, be overridden by a launch file at startup, and be changed again live by an operator -- without ever editing the source. That layered configuration is the \"launch context.\"\n\n## Your exercise\n\nWrite a node that declares a `double` parameter `max_velocity` (default `1.0`), runs a timer loop that **re-reads** the parameter each tick and logs its current value, and registers an on-set-parameters callback that logs the new value whenever `max_velocity` changes. The grader will set the parameter externally and expect to see the updated value reflected in your logs."
+      },
+      "exercise": {
+        "prompt": "Write a node named 'drive_node' that declares a double parameter 'max_velocity' with default 1.0. Add a timer that re-reads max_velocity each tick and logs its current value, and register an on-set-parameters callback that logs the new value whenever max_velocity is changed externally. The grader will set the parameter from outside and check that your node reflects the new value.",
+        "type": "python",
+        "editorLanguage": "python",
+        "starterCode": "import rclpy\nfrom rclpy.node import Node\nfrom rcl_interfaces.msg import SetParametersResult\n\n\nclass DriveNode(Node):\n    def __init__(self):\n        super().__init__('drive_node')\n        # TODO: declare a parameter 'max_velocity' with default 1.0\n        # TODO: register an on-set-parameters callback (self.on_param_change)\n        # TODO: create a timer (e.g. every 0.5s) calling self.loop\n        pass\n\n    def loop(self):\n        # TODO: read the current value of 'max_velocity' and log it\n        pass\n\n    def on_param_change(self, params):\n        # TODO: for each param named 'max_velocity', log its new value\n        # TODO: return SetParametersResult(successful=True)\n        pass\n\n\ndef main(args=None):\n    rclpy.init(args=args)\n    node = DriveNode()\n    try:\n        rclpy.spin(node)\n    except KeyboardInterrupt:\n        pass\n    finally:\n        node.destroy_node()\n        if rclpy.ok():\n            rclpy.shutdown()\n\n\nif __name__ == '__main__':\n    main()\n",
+        "solutionCode": "import rclpy\nfrom rclpy.node import Node\nfrom rcl_interfaces.msg import SetParametersResult\n\n\nclass DriveNode(Node):\n    def __init__(self):\n        super().__init__('drive_node')\n        self.declare_parameter('max_velocity', 1.0)\n        self.add_on_set_parameters_callback(self.on_param_change)\n        self.timer = self.create_timer(0.5, self.loop)\n\n    def loop(self):\n        max_velocity = self.get_parameter('max_velocity').value\n        self.get_logger().info(f'current max_velocity = {max_velocity}')\n\n    def on_param_change(self, params):\n        for p in params:\n            if p.name == 'max_velocity':\n                self.get_logger().info(f'max_velocity changed to {p.value}')\n        return SetParametersResult(successful=True)\n\n\ndef main(args=None):\n    rclpy.init(args=args)\n    node = DriveNode()\n    try:\n        rclpy.spin(node)\n    except KeyboardInterrupt:\n        pass\n    finally:\n        node.destroy_node()\n        if rclpy.ok():\n            rclpy.shutdown()\n\n\nif __name__ == '__main__':\n    main()\n",
+        "supportFiles": {}
+      },
+      "verification": {
+        "strategy": "composite",
+        "humanDescription": "Passed means your node declares max_velocity, logs its value periodically, and reflects a new value in its logs after the parameter is changed externally.",
+        "checks": [
+          {
+            "kind": "param_value",
+            "description": "Confirms the node declared 'max_velocity' with the default 1.0.",
+            "params": {
+              "node": "drive_node",
+              "param": "max_velocity",
+              "expected": 1.0
+            }
+          },
+          {
+            "kind": "stdout_contains",
+            "description": "Confirms the timer loop logged the initial value before any change.",
+            "params": {
+              "text": "current max_velocity = 1.0"
+            }
+          },
+          {
+            "kind": "stdout_contains",
+            "description": "Confirms the node reflected the externally injected value.",
+            "params": {
+              "text": "current max_velocity = 2.5"
+            }
+          }
+        ],
+        "timeoutSeconds": 15,
+        "harnessNotes": "The student script blocks on rclpy.spin(), so the harness runs it as a subprocess and lets the node come up. A sibling rclpy 'probe' node uses get_parameters or a parameter client (rclpy AsyncParameterClient against /drive_node) to read 'max_velocity' and assert it equals the default 1.0. After observing the initial 'current max_velocity = 1.0' line in the merged stdout/stderr, the harness injects a new value of 2.5 externally -- either via the AsyncParameterClient set_parameters call or by invoking 'ros2 param set /drive_node max_velocity 2.5' -- and then waits a few timer ticks. It asserts the merged output now contains 'current max_velocity = 2.5' (proving the loop re-reads the live value) and may also confirm a 'max_velocity changed to 2.5' line from the on-set callback. The run is bounded by the timeout and the process is SIGINT'd afterward; all checks must pass."
+      }
+    },
+    {
+      "id": "module-6",
+      "phase": 2,
+      "order": 6,
+      "title": "Image Pipelines & cv_bridge",
+      "topic": "Bridging ROS 2 sensor_msgs/Image transport with OpenCV/NumPy arrays using cv_bridge to build subscribe-process-republish image pipelines.",
+      "estimatedMinutes": 40,
+      "learningObjectives": [
+        "Explain why ROS 2 ships images as sensor_msgs/msg/Image instead of raw cv::Mat / numpy arrays.",
+        "Convert between sensor_msgs/msg/Image and an OpenCV/NumPy matrix in both directions with cv_bridge.",
+        "Reason about image encodings ('bgr8', 'mono8', '16UC1') and why choosing the wrong one corrupts pixels.",
+        "Build a node that subscribes to one image topic, applies an OpenCV filter, and republishes on another topic while preserving the header."
+      ],
+      "lesson": {
+        "markdown": "# Image Pipelines & cv_bridge\n\nIn your Stanford 2D CV work, an image was just a NumPy array: `img.shape == (H, W, 3)`, `img[y, x]` is a pixel, and you fed it straight into `cv2.cvtColor` or `cv2.GaussianBlur`. ROS 2 doesn't change any of that math. It only changes *how the array gets to you*.\n\n## Why ROS wraps your array in a message\n\nA camera node and your processing node are usually **separate processes** (often separate machines). You can't just pass a NumPy pointer across a network. So ROS 2 defines `sensor_msgs/msg/Image`: a serializable envelope holding the raw bytes plus the metadata you need to reinterpret them.\n\nThink of it like a shipping container for your array:\n\n```text\nheader   -> timestamp + frame_id (which camera, when)\nheight   -> rows (H)\nwidth    -> cols (W)\nencoding -> 'bgr8', 'mono8', '16UC1' ... how to read the bytes\nstep     -> bytes per row\ndata      -> the flat byte buffer (the actual pixels)\n```\n\nThe one trap: `encoding`. The bytes in `data` are meaningless until you know the layout. `'bgr8'` is a 3-channel 8-bit color image (note: **B**lue first, OpenCV's convention). `'mono8'` is single-channel grayscale. `'16UC1'` is a single channel of unsigned 16-bit values (you'll meet that in depth cameras next module). Hand the wrong encoding to the converter and you get garbage or a crash.\n\n## cv_bridge: the translator\n\nManually packing/unpacking `data` is error-prone. The `vision_opencv` stack gives you `cv_bridge`, which does exactly two jobs:\n\n```python\nfrom cv_bridge import CvBridge\nbridge = CvBridge()\n\n# ROS Image  ->  OpenCV/NumPy array\ncv_img = bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')\n\n# OpenCV/NumPy array  ->  ROS Image\nout_msg = bridge.cv2_to_imgmsg(cv_img, encoding='bgr8')\n```\n\nAfter `imgmsg_to_cv2`, `cv_img` is an ordinary NumPy array. Everything you already know works:\n\n```python\nimport cv2\ngray = cv2.cvtColor(cv_img, cv2.COLOR_BGR2GRAY)   # now single channel\nblur = cv2.GaussianBlur(cv_img, (5, 5), 0)\n```\n\nWhen you convert back, **match the encoding to the array shape**. A grayscale `(H, W)` array must go back as `'mono8'`, a `(H, W, 3)` color array as `'bgr8'`. Mismatching them is the #1 cv_bridge bug.\n\n## The subscribe-process-republish pattern\n\nAlmost every perception node follows the same shape: one subscription in, one publisher out, and a callback that does the work.\n\n```python\nclass FilterNode(Node):\n    def __init__(self):\n        super().__init__('filter_node')\n        self.bridge = CvBridge()\n        self.pub = self.create_publisher(Image, '/image_filtered', 10)\n        self.sub = self.create_subscription(\n            Image, '/image_raw', self.on_image, 10)\n\n    def on_image(self, msg):\n        cv_img = self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')\n        gray = cv2.cvtColor(cv_img, cv2.COLOR_BGR2GRAY)\n        out = self.bridge.cv2_to_imgmsg(gray, encoding='mono8')\n        out.header = msg.header        # preserve timestamp + frame_id\n        self.pub.publish(out)\n```\n\nCopying `msg.header` onto your output is not optional politeness. Downstream consumers use that timestamp to align this image with depth, IMU, or transform data. Drop it and you've broken time synchronization for everyone after you.\n\n## Mental model\n\nA ROS image pipeline is just your old OpenCV script with two thin adapters bolted on the ends: `imgmsg_to_cv2` at the inlet, `cv2_to_imgmsg` at the outlet. The interesting computer vision still happens on plain NumPy arrays in between. Master that translation boundary and the rest of perception in ROS 2 is the CV you already know."
+      },
+      "exercise": {
+        "prompt": "Complete a node that subscribes to '/image_raw' (sensor_msgs/msg/Image, 'bgr8'), converts it to an OpenCV array with cv_bridge, converts it to grayscale with cv2.cvtColor, and republishes the result on '/image_filtered' as a 'mono8' sensor_msgs/msg/Image. Copy the incoming header onto the outgoing message so timestamps are preserved.",
+        "type": "python",
+        "editorLanguage": "python",
+        "starterCode": "import rclpy\nfrom rclpy.node import Node\nfrom sensor_msgs.msg import Image\nfrom cv_bridge import CvBridge\nimport cv2\n\n\nclass GrayscaleFilter(Node):\n    def __init__(self):\n        super().__init__('grayscale_filter')\n        self.bridge = CvBridge()\n        # TODO: create a publisher of sensor_msgs/msg/Image on '/image_filtered'\n        # TODO: create a subscription to '/image_raw' calling self.on_image\n\n    def on_image(self, msg):\n        # TODO: convert msg to an OpenCV array (desired_encoding='bgr8')\n        # TODO: convert to grayscale with cv2.cvtColor(..., cv2.COLOR_BGR2GRAY)\n        # TODO: convert the grayscale array back to an Image with encoding='mono8'\n        # TODO: copy msg.header onto the output, then publish it\n        pass\n\n\ndef main(args=None):\n    rclpy.init(args=args)\n    node = GrayscaleFilter()\n    try:\n        rclpy.spin(node)\n    except KeyboardInterrupt:\n        pass\n    finally:\n        node.destroy_node()\n        rclpy.shutdown()\n\n\nif __name__ == '__main__':\n    main()\n",
+        "solutionCode": "import rclpy\nfrom rclpy.node import Node\nfrom sensor_msgs.msg import Image\nfrom cv_bridge import CvBridge\nimport cv2\n\n\nclass GrayscaleFilter(Node):\n    def __init__(self):\n        super().__init__('grayscale_filter')\n        self.bridge = CvBridge()\n        self.pub = self.create_publisher(Image, '/image_filtered', 10)\n        self.sub = self.create_subscription(\n            Image, '/image_raw', self.on_image, 10)\n\n    def on_image(self, msg):\n        cv_img = self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')\n        gray = cv2.cvtColor(cv_img, cv2.COLOR_BGR2GRAY)\n        out_msg = self.bridge.cv2_to_imgmsg(gray, encoding='mono8')\n        out_msg.header = msg.header\n        self.pub.publish(out_msg)\n\n\ndef main(args=None):\n    rclpy.init(args=args)\n    node = GrayscaleFilter()\n    try:\n        rclpy.spin(node)\n    except KeyboardInterrupt:\n        pass\n    finally:\n        node.destroy_node()\n        rclpy.shutdown()\n\n\nif __name__ == '__main__':\n    main()\n",
+        "supportFiles": {}
+      },
+      "verification": {
+        "strategy": "composite",
+        "humanDescription": "Passed when the node subscribes to '/image_raw', and for a known color test image republishes a single-channel 'mono8' image on '/image_filtered' whose dimensions match the input and whose center pixel equals the grayscale of the planted color, with the original header timestamp preserved.",
+        "checks": [
+          {
+            "kind": "node_exists",
+            "description": "A node named 'grayscale_filter' is present on the ROS graph.",
+            "params": {
+              "node_name": "grayscale_filter"
+            }
+          },
+          {
+            "kind": "topic_msg_type",
+            "description": "'/image_filtered' publishes sensor_msgs/msg/Image.",
+            "params": {
+              "topic": "/image_filtered",
+              "msg_type": "sensor_msgs/msg/Image"
+            }
+          },
+          {
+            "kind": "image_republished",
+            "description": "Output is a mono8 image with the same height/width as the input.",
+            "params": {
+              "topic": "/image_filtered",
+              "expected_encoding": "mono8",
+              "expected_height": 48,
+              "expected_width": 64
+            }
+          },
+          {
+            "kind": "numeric_close",
+            "description": "Center pixel of output equals grayscale of the planted color within tolerance.",
+            "params": {
+              "expected": 150,
+              "tolerance": 2,
+              "value_source": "output_image_center_pixel"
+            }
+          }
+        ],
+        "timeoutSeconds": 20,
+        "harnessNotes": "The harness initializes rclpy and publishes one sensor_msgs/msg/Image on '/image_raw' built from a NumPy array of shape (48, 64, 3), dtype uint8, encoding 'bgr8', where every pixel is BGR = (100, 150, 200) (so B=100, G=150, R=200). It sets header.stamp to a sentinel value (sec=42, nanosec=7) and header.frame_id='camera_color_optical_frame'. It subscribes to '/image_filtered' and asserts: (1) a message arrives within the timeout; (2) msg.encoding == 'mono8'; (3) msg.height == 48 and msg.width == 64; (4) the center pixel at (row=24, col=32) decoded via cv_bridge equals round(0.299*200 + 0.587*150 + 0.114*100) which OpenCV COLOR_BGR2GRAY computes as 150 (+/- 2 for rounding); (5) msg.header.stamp.sec == 42 and msg.header.stamp.nanosec == 7, confirming the header was copied. Node presence and topic type are checked via the ROS graph introspection API."
+      }
+    },
+    {
+      "id": "module-7",
+      "phase": 2,
+      "order": 7,
+      "title": "RGB-D Sensors & Depth Mapping",
+      "topic": "Reading metric depth from aligned RGB-D streams by decoding 16UC1 sensor_msgs/Image data and sampling per-pixel distance in millimeters.",
+      "estimatedMinutes": 40,
+      "learningObjectives": [
+        "Describe how an RGB-D sensor produces a depth image aligned with the color image.",
+        "Decode a 16UC1 depth image into a NumPy uint16 array and read the value at a chosen pixel.",
+        "Interpret a raw depth value as an absolute distance in millimeters (and convert to meters).",
+        "Locate the geometric center pixel of an arbitrary-resolution image as (height//2, width//2)."
+      ],
+      "lesson": {
+        "markdown": "# RGB-D Sensors & Depth Mapping\n\nA normal camera answers *what color is at pixel (x, y)?* An RGB-D sensor (RealSense, Azure Kinect, structured-light or stereo rigs) adds a second answer: *how far away is the surface at pixel (x, y)?* That second image is the **depth image**, and it turns flat 2D pixels into 3D spatial awareness.\n\n## What a depth image actually contains\n\nThe color stream you already know is `(H, W, 3)` of 8-bit values. A depth stream is `(H, W)` of **16-bit unsigned integers**, encoding `16UC1`:\n\n- **16** bits per pixel, **U**nsigned, **C**hannel count **1**.\n- Each value is a distance, almost always in **millimeters**.\n\nSo `depth[y, x] == 1500` means the nearest surface along that ray is **1500 mm = 1.5 m** away. A value of `0` is special: it means *no reading* (too close, too far, reflective, or occluded). Always treat `0` as \"unknown,\" not \"touching the lens.\"\n\n```text\ncolor pixel  (y, x) = [B, G, R]      8-bit x3\ndepth pixel  (y, x) = 1500           16-bit x1  -> 1500 mm\n```\n\n## \"Aligned\" / \"rect\" streams\n\nYou'll subscribe to topics like `/camera/depth/image_rect_raw`. The `rect` means *rectified*: lens distortion has been removed, so straight lines in the world are straight in the image. When the driver also publishes an **aligned** depth image, depth pixel `(y, x)` corresponds to the *same world point* as color pixel `(y, x)`. That alignment is what lets you ask \"how far is the red cup I detected at (320, 240)?\" by simply indexing the depth array at the same coordinates. (Under the hood this uses the camera intrinsics you met in 2D CV, but the driver has already done that work for you on a `_rect_` / aligned topic.)\n\n## Decoding depth with cv_bridge\n\nSame translator as last module, different encoding. The key is to request `'16UC1'` (or `'passthrough'`) so the bytes are interpreted as 16-bit, not silently truncated:\n\n```python\nfrom cv_bridge import CvBridge\nbridge = CvBridge()\n\ndepth = bridge.imgmsg_to_cv2(msg, desired_encoding='16UC1')\n# depth is a NumPy array, dtype == uint16, shape (H, W)\n```\n\nNow it is just NumPy. Reading a distance is plain indexing:\n\n```python\nh, w = depth.shape\ncy, cx = h // 2, w // 2          # geometric center pixel\ncenter_mm = int(depth[cy, cx])    # distance in millimeters\ncenter_m = center_mm / 1000.0     # convert to meters if you need SI\n```\n\n## Why `(height // 2, width // 2)`\n\nNumPy indexes `[row, col]`, i.e. `[y, x]`. The center row is `height // 2`, the center column is `width // 2`. Integer division handles both even and odd resolutions cleanly. For a 480x640 image that is `depth[240, 320]`. Getting the order backwards (`[w//2, h//2]`) is a classic bug that only bites on non-square images.\n\n## Putting it together\n\n```python\ndef on_depth(self, msg):\n    depth = self.bridge.imgmsg_to_cv2(msg, desired_encoding='16UC1')\n    h, w = depth.shape\n    center_mm = int(depth[h // 2, w // 2])\n    self.get_logger().info(f'Center distance: {center_mm} mm')\n```\n\n## Mental model\n\nA depth image is a grayscale image where the pixel value *is the distance* instead of brightness. Decode it as 16-bit, index the center with `[h//2, w//2]`, and you have a metric measurement straight out of the same NumPy world you already live in. Just remember the units are millimeters and `0` means \"no data.\""
+      },
+      "exercise": {
+        "prompt": "Complete a node that subscribes to '/camera/depth/image_rect_raw' (sensor_msgs/msg/Image, encoding '16UC1'). On each frame, decode it with cv_bridge to a uint16 NumPy array, read the value at the exact center pixel (height//2, width//2), and print exactly 'Center distance: <N> mm' where <N> is the integer millimeter value at that pixel.",
+        "type": "python",
+        "editorLanguage": "python",
+        "starterCode": "import rclpy\nfrom rclpy.node import Node\nfrom sensor_msgs.msg import Image\nfrom cv_bridge import CvBridge\n\n\nclass DepthCenterReader(Node):\n    def __init__(self):\n        super().__init__('depth_center_reader')\n        self.bridge = CvBridge()\n        # TODO: subscribe to '/camera/depth/image_rect_raw' calling self.on_depth\n\n    def on_depth(self, msg):\n        # TODO: decode msg to a uint16 NumPy array (desired_encoding='16UC1')\n        # TODO: compute the center pixel as (height // 2, width // 2)\n        # TODO: read the integer mm value there\n        # TODO: print exactly 'Center distance: <N> mm'\n        pass\n\n\ndef main(args=None):\n    rclpy.init(args=args)\n    node = DepthCenterReader()\n    try:\n        rclpy.spin(node)\n    except KeyboardInterrupt:\n        pass\n    finally:\n        node.destroy_node()\n        rclpy.shutdown()\n\n\nif __name__ == '__main__':\n    main()\n",
+        "solutionCode": "import rclpy\nfrom rclpy.node import Node\nfrom sensor_msgs.msg import Image\nfrom cv_bridge import CvBridge\n\n\nclass DepthCenterReader(Node):\n    def __init__(self):\n        super().__init__('depth_center_reader')\n        self.bridge = CvBridge()\n        self.sub = self.create_subscription(\n            Image, '/camera/depth/image_rect_raw', self.on_depth, 10)\n\n    def on_depth(self, msg):\n        depth = self.bridge.imgmsg_to_cv2(msg, desired_encoding='16UC1')\n        h, w = depth.shape\n        center_mm = int(depth[h // 2, w // 2])\n        print(f'Center distance: {center_mm} mm', flush=True)\n        self.get_logger().info(f'Center distance: {center_mm} mm')\n\n\ndef main(args=None):\n    rclpy.init(args=args)\n    node = DepthCenterReader()\n    try:\n        rclpy.spin(node)\n    except KeyboardInterrupt:\n        pass\n    finally:\n        node.destroy_node()\n        rclpy.shutdown()\n\n\nif __name__ == '__main__':\n    main()\n",
+        "supportFiles": {}
+      },
+      "verification": {
+        "strategy": "composite",
+        "humanDescription": "Passed when the node subscribes to the depth topic and, for a synthetic 16UC1 depth image with a known center value, prints 'Center distance: 1500 mm' (the planted center distance in millimeters).",
+        "checks": [
+          {
+            "kind": "node_exists",
+            "description": "A node named 'depth_center_reader' is present on the ROS graph.",
+            "params": {
+              "node_name": "depth_center_reader"
+            }
+          },
+          {
+            "kind": "stdout_regex",
+            "description": "Stdout reports the center distance in mm as an integer with the exact format.",
+            "params": {
+              "pattern": "^Center distance: 1500 mm$",
+              "multiline": true
+            }
+          }
+        ],
+        "timeoutSeconds": 20,
+        "harnessNotes": "The harness publishes one sensor_msgs/msg/Image on '/camera/depth/image_rect_raw' built from a NumPy array of shape (480, 640), dtype uint16, encoding '16UC1'. The whole array is filled with 800 EXCEPT the exact center pixel at (row=240, col=320) which is set to 1500. This makes the center value unambiguous: a solution that reads the correct center pixel reports 1500, while a transposed index (col//2, row//2) would also be 1500 here, so a second background pixel at (row=10, col=10)=999 plus the distinct fill value 800 ensures only reading [h//2, w//2] yields 1500 (a solution that, e.g., reports the array max would print 1500 too, so the harness ALSO runs a second trial where center=1200 and max=4000 elsewhere, requiring the printed value to track the center, not the max). The harness captures the node's stdout and asserts a line matching '^Center distance: 1500 mm$' appears for trial 1 (and '^Center distance: 1200 mm$' for trial 2). The integer must be exact; no decimal point, no meters."
+      }
+    },
+    {
+      "id": "module-8",
+      "phase": 2,
+      "order": 8,
+      "title": "3D Reconstruction & Point Clouds",
+      "topic": "Parsing sensor_msgs/msg/PointCloud2 with sensor_msgs_py.point_cloud2 to extract x,y,z points and filter geometry by Euclidean distance for spatial mapping.",
+      "estimatedMinutes": 45,
+      "learningObjectives": [
+        "Explain how a PointCloud2 packs an unordered set of 3D points into a binary buffer described by fields.",
+        "Iterate x,y,z values using sensor_msgs_py.point_cloud2.read_points with field_names and skip_nans.",
+        "Compute the Euclidean distance of each point from the sensor origin.",
+        "Filter points by a metric threshold (1.5 m) and report the count of points that remain."
+      ],
+      "lesson": {
+        "markdown": "# 3D Reconstruction & Point Clouds\n\nA depth image gave you one distance per pixel on a regular grid. A **point cloud** drops the grid entirely and gives you a bag of explicit 3D coordinates: `(x, y, z)` in meters, in the sensor's frame. This is the native format for 3D reconstruction, obstacle detection, and mapping. ROS 2 carries it as `sensor_msgs/msg/PointCloud2`.\n\n## Why PointCloud2 looks intimidating (and isn't)\n\nOpen the message and you see `height`, `width`, `fields`, `point_step`, `row_step`, and a giant `data` byte buffer. It feels lower-level than an image, and it is, on purpose: a cloud may carry x/y/z plus intensity, RGB, normals, ring index... so instead of a fixed layout it ships a **self-describing** buffer. The `fields` list says \"there is a float32 named 'x' at byte offset 0, 'y' at offset 4, 'z' at offset 8...\" and `point_step` says how many bytes one full point occupies.\n\n```text\nfields:  [x@0 f32, y@4 f32, z@8 f32, ...]\npoint_step: 16          # bytes per point\ndata:  <raw bytes for N points back to back>\n```\n\nYou could decode that by hand with `struct`. Don't. ROS 2 ships a helper that reads the `fields` metadata for you.\n\n## sensor_msgs_py.point_cloud2.read_points\n\nThis is the canonical reader. You tell it which fields you want and it yields them point by point:\n\n```python\nfrom sensor_msgs_py import point_cloud2\n\nfor x, y, z in point_cloud2.read_points(\n        msg,\n        field_names=('x', 'y', 'z'),\n        skip_nans=True):\n    ...\n```\n\nTwo arguments matter:\n\n- `field_names=('x', 'y', 'z')` -> only pull those three fields, in that order, regardless of what else the cloud carries.\n- `skip_nans=True` -> silently drop points whose value is NaN. Real sensors emit NaN for invalid returns; if you don't skip them, your math becomes NaN and your filters misbehave.\n\nEach iteration gives you three plain floats in **meters** (the SI convention for clouds, unlike depth images which were millimeters, watch that unit switch).\n\n## Filtering by distance\n\nDistance from the sensor origin is the ordinary Euclidean norm:\n\n```python\nimport math\ndist = math.sqrt(x * x + y * y + z * z)\n```\n\nTo keep only nearby structure, count the points within 1.5 m:\n\n```python\nnear = 0\nfor x, y, z in point_cloud2.read_points(\n        msg, field_names=('x', 'y', 'z'), skip_nans=True):\n    if math.sqrt(x * x + y * y + z * z) <= 1.5:\n        near += 1\nself.get_logger().info(f'Points within 1.5 m: {near}')\n```\n\nThis \"throw away anything beyond a threshold\" step is the foundation of obstacle filtering: keep the close stuff that might be a collision, discard the far walls.\n\n## A note on read_points return types\n\nDepending on your ROS 2 version, `read_points` may yield tuples or a structured NumPy element. Unpacking `for x, y, z in ...` works in both Humble and Jazzy when you pass `field_names=('x','y','z')`. If you ever need an array, `read_points_numpy` exists too, but for counting, the iterator is cleanest.\n\n## Mental model\n\nA PointCloud2 is a self-describing list of 3D points. `read_points(..., field_names=('x','y','z'), skip_nans=True)` is the can-opener: it hands you clean `(x, y, z)` floats in meters. From there it's plain geometry, Euclidean distance and a threshold, no message internals required."
+      },
+      "exercise": {
+        "prompt": "Complete a node that subscribes to '/points' (sensor_msgs/msg/PointCloud2). For each cloud, use sensor_msgs_py.point_cloud2.read_points with field_names=('x','y','z') and skip_nans=True, compute each point's Euclidean distance from the origin, and count the points within 1.5 meters. Print exactly 'Points within 1.5 m: <N>'.",
+        "type": "python",
+        "editorLanguage": "python",
+        "starterCode": "import math\n\nimport rclpy\nfrom rclpy.node import Node\nfrom sensor_msgs.msg import PointCloud2\nfrom sensor_msgs_py import point_cloud2\n\n\nclass NearPointCounter(Node):\n    def __init__(self):\n        super().__init__('near_point_counter')\n        self.threshold = 1.5\n        # TODO: subscribe to '/points' calling self.on_cloud\n\n    def on_cloud(self, msg):\n        # TODO: iterate read_points(msg, field_names=('x','y','z'), skip_nans=True)\n        # TODO: count points whose sqrt(x*x + y*y + z*z) <= self.threshold\n        # TODO: print exactly 'Points within 1.5 m: <N>'\n        pass\n\n\ndef main(args=None):\n    rclpy.init(args=args)\n    node = NearPointCounter()\n    try:\n        rclpy.spin(node)\n    except KeyboardInterrupt:\n        pass\n    finally:\n        node.destroy_node()\n        rclpy.shutdown()\n\n\nif __name__ == '__main__':\n    main()\n",
+        "solutionCode": "import math\n\nimport rclpy\nfrom rclpy.node import Node\nfrom sensor_msgs.msg import PointCloud2\nfrom sensor_msgs_py import point_cloud2\n\n\nclass NearPointCounter(Node):\n    def __init__(self):\n        super().__init__('near_point_counter')\n        self.threshold = 1.5\n        self.sub = self.create_subscription(\n            PointCloud2, '/points', self.on_cloud, 10)\n\n    def on_cloud(self, msg):\n        near = 0\n        for x, y, z in point_cloud2.read_points(\n                msg, field_names=('x', 'y', 'z'), skip_nans=True):\n            if math.sqrt(float(x) * float(x) + float(y) * float(y) + float(z) * float(z)) <= self.threshold:\n                near += 1\n        print(f'Points within 1.5 m: {near}', flush=True)\n        self.get_logger().info(f'Points within 1.5 m: {near}')\n\n\ndef main(args=None):\n    rclpy.init(args=args)\n    node = NearPointCounter()\n    try:\n        rclpy.spin(node)\n    except KeyboardInterrupt:\n        pass\n    finally:\n        node.destroy_node()\n        rclpy.shutdown()\n\n\nif __name__ == '__main__':\n    main()\n",
+        "supportFiles": {}
+      },
+      "verification": {
+        "strategy": "composite",
+        "humanDescription": "Passed when the node subscribes to '/points' and, for a synthetic PointCloud2 with a known mix of near, far, and NaN points, prints 'Points within 1.5 m: 3' (the exact count of points within the 1.5 m threshold).",
+        "checks": [
+          {
+            "kind": "node_exists",
+            "description": "A node named 'near_point_counter' is present on the ROS graph.",
+            "params": {
+              "node_name": "near_point_counter"
+            }
+          },
+          {
+            "kind": "stdout_regex",
+            "description": "Stdout reports the exact count of points within 1.5 m.",
+            "params": {
+              "pattern": "^Points within 1\\.5 m: 3$",
+              "multiline": true
+            }
+          }
+        ],
+        "timeoutSeconds": 20,
+        "harnessNotes": "The harness builds one sensor_msgs/msg/PointCloud2 with point_cloud2.create_cloud_xyz32 from exactly 6 float32 (x,y,z) points: P1=(1.0,0.0,0.0) dist 1.0 NEAR; P2=(0.0,0.0,1.4) dist 1.4 NEAR; P3=(0.8,0.8,0.8) dist 1.3856 NEAR; P4=(1.0,1.0,1.0) dist 1.7320 FAR; P5=(3.0,0.0,0.0) dist 3.0 FAR; P6=(nan,nan,nan) which skip_nans must drop. The boundary is exclusive of P4 (1.732 > 1.5). Ground-truth count within <=1.5 m is exactly 3 (P1,P2,P3). The harness publishes this cloud on '/points', captures the node's stdout, and asserts a line matching '^Points within 1\\.5 m: 3$' appears. Because P3 (1.3856) is close to the threshold and P4 (1.732) is just over, an off-by-one in the comparison or failure to skip NaNs produces a different count, so the value 3 uniquely identifies a correct solution. Node presence is verified via graph introspection."
+      }
+    },
+    {
+      "id": "module-9",
+      "phase": 2,
+      "order": 9,
+      "title": "Pose Estimation",
+      "topic": "Turning a perception result into a ROS 2 spatial estimate by publishing a geometry_msgs/msg/PoseStamped with position and a normalized quaternion orientation.",
+      "estimatedMinutes": 45,
+      "learningObjectives": [
+        "Explain what a geometry_msgs/msg/PoseStamped represents: a frame-stamped position plus an orientation quaternion.",
+        "Map a vision computation (feature extraction) onto a 6-DOF pose estimate.",
+        "Populate and publish a PoseStamped with a correct header (stamp + frame_id) and a normalized identity quaternion.",
+        "Wire an image-in / pose-out perception node following the standard subscribe-process-publish pattern."
+      ],
+      "lesson": {
+        "markdown": "# Pose Estimation\n\nThe last three modules turned pixels into measurements. This one turns measurements into a **pose**, the bridge from \"what the camera saw\" to \"where things are in space.\" When a visual algorithm (PnP, marker detection, visual odometry, a learned model) decides where the camera or an object is, ROS 2 expects that answer as a `geometry_msgs/msg/PoseStamped`.\n\n## What a PoseStamped is\n\nA pose is two things: **position** (where) and **orientation** (which way it's facing). `PoseStamped` wraps both with a header so consumers know *when* and *in which frame*:\n\n```text\nheader:\n  stamp     -> when this estimate is valid\n  frame_id  -> the reference frame (e.g. 'map', 'camera_link')\npose:\n  position    -> x, y, z   (meters)\n  orientation -> x, y, z, w (a quaternion)\n```\n\nPosition is intuitive: three meters in a frame. Orientation is a **quaternion** `(x, y, z, w)`, not Euler angles. You don't need the math here, just two facts:\n\n1. The \"no rotation\" / identity orientation is `(x=0, y=0, z=0, w=1)`. Use that when you only have a position to report.\n2. A quaternion **must be normalized** (`x^2 + y^2 + z^2 + w^2 == 1`). The identity already is. If you ever leave all four at `0`, downstream TF and RViz reject it as invalid, that's the single most common PoseStamped mistake.\n\nWhy quaternions instead of roll/pitch/yaw? They avoid gimbal lock and interpolate smoothly. ROS uses them everywhere, so producing one correctly is the skill that matters.\n\n## From image to pose\n\nA real estimator runs features through geometry. The shape of the node, though, is identical to your filter node from Module 6: subscribe to an image, compute something, publish the result, only now the output message is a `PoseStamped` instead of an `Image`.\n\n```python\nfrom geometry_msgs.msg import PoseStamped\n\nclass PoseEstimator(Node):\n    def __init__(self):\n        super().__init__('pose_estimator')\n        self.pub = self.create_publisher(PoseStamped, '/estimated_pose', 10)\n        self.sub = self.create_subscription(\n            Image, '/image_raw', self.on_image, 10)\n\n    def on_image(self, msg):\n        # stand-in for real feature extraction / PnP\n        x, y, z = self.estimate_position(msg)\n\n        out = PoseStamped()\n        out.header.stamp = msg.header.stamp        # reuse image time\n        out.header.frame_id = 'camera_link'\n        out.pose.position.x = x\n        out.pose.position.y = y\n        out.pose.position.z = z\n        out.pose.orientation.x = 0.0\n        out.pose.orientation.y = 0.0\n        out.pose.orientation.z = 0.0\n        out.pose.orientation.w = 1.0               # identity, normalized\n        self.pub.publish(out)\n```\n\nNotice the header timestamp comes from the *input image*, not `now()`. The pose describes the world *as the image saw it*; stamping it with the image time keeps the estimate aligned with the data it came from.\n\n## The simulated feature extraction\n\nReal feature extraction is a module of its own. To practice the ROS plumbing in isolation, we *simulate* it with a deterministic computation, here, derive a position from the image dimensions so the output is predictable:\n\n```python\ndef estimate_position(self, msg):\n    # deterministic stand-in: scale image size into meters\n    x = msg.width / 1000.0\n    y = msg.height / 1000.0\n    z = 1.0\n    return x, y, z\n```\n\nThis isn't real geometry; it's a placeholder that lets the grader verify you built and published the PoseStamped correctly. In production you'd swap this for `cv2.solvePnP` or a deep pose network, but the message-building code around it stays exactly the same.\n\n## Mental model\n\nPose estimation, from ROS's side, is \"do a CV computation, then pack the answer into a PoseStamped with a real header and a normalized quaternion.\" Get the identity quaternion `(0,0,0,1)` and the frame_id right, reuse the image timestamp, and your perception result is now first-class spatial data the rest of the robot can consume."
+      },
+      "exercise": {
+        "prompt": "Complete a node that subscribes to '/image_raw' (sensor_msgs/msg/Image) and publishes a geometry_msgs/msg/PoseStamped on '/estimated_pose'. Simulate feature extraction by setting position x = msg.width/1000.0, y = msg.height/1000.0, z = 1.0. Set orientation to the identity quaternion (0,0,0,1), frame_id to 'camera_link', and reuse the incoming image's header stamp.",
+        "type": "python",
+        "editorLanguage": "python",
+        "starterCode": "import rclpy\nfrom rclpy.node import Node\nfrom sensor_msgs.msg import Image\nfrom geometry_msgs.msg import PoseStamped\n\n\nclass PoseEstimator(Node):\n    def __init__(self):\n        super().__init__('pose_estimator')\n        # TODO: create a publisher of PoseStamped on '/estimated_pose'\n        # TODO: subscribe to '/image_raw' calling self.on_image\n\n    def on_image(self, msg):\n        # TODO: build a PoseStamped\n        # TODO: header.stamp = msg.header.stamp; header.frame_id = 'camera_link'\n        # TODO: position x=msg.width/1000.0, y=msg.height/1000.0, z=1.0\n        # TODO: orientation = identity quaternion (0,0,0,1)\n        # TODO: publish it\n        pass\n\n\ndef main(args=None):\n    rclpy.init(args=args)\n    node = PoseEstimator()\n    try:\n        rclpy.spin(node)\n    except KeyboardInterrupt:\n        pass\n    finally:\n        node.destroy_node()\n        rclpy.shutdown()\n\n\nif __name__ == '__main__':\n    main()\n",
+        "solutionCode": "import rclpy\nfrom rclpy.node import Node\nfrom sensor_msgs.msg import Image\nfrom geometry_msgs.msg import PoseStamped\n\n\nclass PoseEstimator(Node):\n    def __init__(self):\n        super().__init__('pose_estimator')\n        self.pub = self.create_publisher(PoseStamped, '/estimated_pose', 10)\n        self.sub = self.create_subscription(\n            Image, '/image_raw', self.on_image, 10)\n\n    def on_image(self, msg):\n        out = PoseStamped()\n        out.header.stamp = msg.header.stamp\n        out.header.frame_id = 'camera_link'\n        out.pose.position.x = msg.width / 1000.0\n        out.pose.position.y = msg.height / 1000.0\n        out.pose.position.z = 1.0\n        out.pose.orientation.x = 0.0\n        out.pose.orientation.y = 0.0\n        out.pose.orientation.z = 0.0\n        out.pose.orientation.w = 1.0\n        self.pub.publish(out)\n\n\ndef main(args=None):\n    rclpy.init(args=args)\n    node = PoseEstimator()\n    try:\n        rclpy.spin(node)\n    except KeyboardInterrupt:\n        pass\n    finally:\n        node.destroy_node()\n        rclpy.shutdown()\n\n\nif __name__ == '__main__':\n    main()\n",
+        "supportFiles": {}
+      },
+      "verification": {
+        "strategy": "composite",
+        "humanDescription": "Passed when the node subscribes to '/image_raw' and publishes a geometry_msgs/msg/PoseStamped on '/estimated_pose' whose position is derived from the planted image dimensions, whose orientation is the identity quaternion, and whose header stamp matches the input image.",
+        "checks": [
+          {
+            "kind": "node_exists",
+            "description": "A node named 'pose_estimator' is present on the ROS graph.",
+            "params": {
+              "node_name": "pose_estimator"
+            }
+          },
+          {
+            "kind": "topic_msg_type",
+            "description": "'/estimated_pose' publishes geometry_msgs/msg/PoseStamped.",
+            "params": {
+              "topic": "/estimated_pose",
+              "msg_type": "geometry_msgs/msg/PoseStamped"
+            }
+          },
+          {
+            "kind": "numeric_close",
+            "description": "Pose position x equals image width/1000.",
+            "params": {
+              "field": "pose.position.x",
+              "expected": 0.64,
+              "tolerance": 0.0001
+            }
+          },
+          {
+            "kind": "numeric_close",
+            "description": "Pose position y equals image height/1000.",
+            "params": {
+              "field": "pose.position.y",
+              "expected": 0.48,
+              "tolerance": 0.0001
+            }
+          },
+          {
+            "kind": "numeric_close",
+            "description": "Pose position z equals 1.0.",
+            "params": {
+              "field": "pose.position.z",
+              "expected": 1.0,
+              "tolerance": 0.0001
+            }
+          },
+          {
+            "kind": "numeric_close",
+            "description": "Orientation is the identity quaternion (w = 1).",
+            "params": {
+              "field": "pose.orientation.w",
+              "expected": 1.0,
+              "tolerance": 0.0001
+            }
+          }
+        ],
+        "timeoutSeconds": 20,
+        "harnessNotes": "The harness publishes one sensor_msgs/msg/Image on '/image_raw' with width=640, height=480, encoding='bgr8', header.stamp set to a sentinel (sec=99, nanosec=5) and header.frame_id='camera_color_optical_frame'. It subscribes to '/estimated_pose' and asserts a geometry_msgs/msg/PoseStamped arrives within the timeout with: pose.position.x == 0.64 (640/1000), pose.position.y == 0.48 (480/1000), pose.position.z == 1.0 (all +/- 1e-4); orientation exactly (x=0.0, y=0.0, z=0.0, w=1.0) and normalized (x^2+y^2+z^2+w^2 == 1 within 1e-6); header.frame_id == 'camera_link'; and header.stamp.sec == 99 and header.stamp.nanosec == 5 confirming the image stamp was reused. Node presence and topic type are checked via the ROS graph introspection API."
+      }
+    },
+    {
+      "id": "module-10",
+      "phase": 3,
+      "order": 10,
+      "title": "Spatial Transformations (TF2)",
+      "topic": "Tracking how coordinate frames relate to each other over time using the tf2_ros transform system.",
+      "estimatedMinutes": 40,
+      "learningObjectives": [
+        "Explain what a coordinate frame is and why robots need a tree of them.",
+        "Distinguish static transforms from dynamic transforms that change over time.",
+        "Build and stamp a geometry_msgs/msg/TransformStamped message correctly.",
+        "Broadcast a time-varying transform using tf2_ros.TransformBroadcaster from inside a timer callback."
+      ],
+      "lesson": {
+        "markdown": "# Spatial Transformations (TF2)\n\nIn your Stanford 2D CV work you constantly converted between pixel coordinates, camera coordinates, and world coordinates using matrices. ROS 2 does the same thing for a whole robot, but it adds a dimension you never had to worry about in a static image: **time**. A camera mounted on a moving robot is at a different place every millisecond, so the relationship between frames is not one matrix, it is a stream of matrices.\n\n## Frames are just labeled coordinate systems\n\nA *frame* is a named 3D coordinate system. A typical robot has many: `map` (the fixed world), `odom`, `base_link` (the robot body), `camera_link`, `lidar_link`, and so on. Each sensor reports data in its own frame. A LiDAR point is `(x, y, z)` relative to `lidar_link`. To draw that point in the world you need to know where `lidar_link` is relative to `map`.\n\nTF2 organizes all frames into a **tree**: every frame has exactly one parent. To go from any frame to any other, TF2 walks the tree and multiplies the transforms along the path. You never multiply matrices by hand again. You just *publish* the parent-to-child relationships and *ask* TF2 to compute the rest.\n\n## Static vs dynamic transforms\n\nSome relationships never change. The camera is bolted to the robot, so `base_link -> camera_link` is constant. That is a **static transform**, published once. Others change every cycle, like `map -> base_link` as the robot drives around. That is a **dynamic transform**, re-published continuously, each one stamped with the time it was valid for.\n\nThe time stamp is the whole point. If you ask 'where was the camera 0.2 seconds ago?', TF2 interpolates between stamped transforms to answer. Forgetting to set the stamp is the single most common TF2 bug.\n\n## The message: TransformStamped\n\nA dynamic transform is a `geometry_msgs/msg/TransformStamped`:\n\n```python\nfrom geometry_msgs.msg import TransformStamped\n\nt = TransformStamped()\nt.header.stamp = node.get_clock().now().to_msg()\nt.header.frame_id = 'map'          # parent\nt.child_frame_id = 'camera_link'   # child\nt.transform.translation.x = 1.0\nt.transform.translation.y = 0.0\nt.transform.translation.z = 0.0\nt.transform.rotation.w = 1.0       # identity quaternion\n```\n\nNote translation is `x/y/z` and rotation is a **quaternion** `x/y/z/w`. A quaternion of `(0,0,0,1)` means 'no rotation'. Do not leave the quaternion all zeros, that is invalid and TF2 will complain.\n\n## Broadcasting over time\n\nTo publish dynamic transforms you create a `TransformBroadcaster` and call `sendTransform()` on a timer. Here the child frame moves in a circle around the parent, so each tick we recompute the translation from the elapsed time:\n\n```python\nimport math\nfrom tf2_ros import TransformBroadcaster\n\nself.br = TransformBroadcaster(self)\nself.timer = self.create_timer(0.1, self.tick)\n\ndef tick(self):\n    now = self.get_clock().now()\n    elapsed = (now - self.start).nanoseconds * 1e-9\n    t = TransformStamped()\n    t.header.stamp = now.to_msg()\n    t.header.frame_id = 'map'\n    t.child_frame_id = 'camera_link'\n    t.transform.translation.x = math.cos(elapsed)\n    t.transform.translation.y = math.sin(elapsed)\n    t.transform.rotation.w = 1.0\n    self.br.sendTransform(t)\n```\n\nThat is it: a node that says, ten times a second, 'the camera is right *here* relative to the map, as of *now*.' Any other node, RViz, or a perception pipeline can now place camera data into the world correctly. In this exercise you will write exactly that broadcaster, driving `map -> camera_link` along a circular trajectory defined purely by elapsed time."
+      },
+      "exercise": {
+        "prompt": "Complete the TfCirclePublisher node so it broadcasts a dynamic transform from 'map' to 'camera_link'. On a 10 Hz timer, compute a position on a unit circle from the elapsed time (x = cos(t), y = sin(t), z = 0.0), build a properly stamped TransformStamped with an identity rotation quaternion, and send it with the TransformBroadcaster. Make sure the header stamp and both frame ids are set.",
+        "type": "python",
+        "editorLanguage": "python",
+        "starterCode": "import math\n\nimport rclpy\nfrom rclpy.node import Node\nfrom geometry_msgs.msg import TransformStamped\nfrom tf2_ros import TransformBroadcaster\n\n\nclass TfCirclePublisher(Node):\n    def __init__(self):\n        super().__init__('tf_circle_publisher')\n        # TODO: create a TransformBroadcaster bound to this node\n        self.br = None\n        self.start = self.get_clock().now()\n        # TODO: create a 0.1s (10 Hz) timer calling self.tick\n\n    def tick(self):\n        now = self.get_clock().now()\n        elapsed = (now - self.start).nanoseconds * 1e-9\n\n        t = TransformStamped()\n        # TODO: set the timestamp from `now`\n        # TODO: set parent frame_id to 'map' and child_frame_id to 'camera_link'\n        # TODO: set translation x/y to a unit circle from `elapsed`, z = 0.0\n        # TODO: set an identity rotation quaternion (w = 1.0)\n        # TODO: broadcast the transform\n\n\ndef main(args=None):\n    rclpy.init(args=args)\n    node = TfCirclePublisher()\n    try:\n        rclpy.spin(node)\n    except KeyboardInterrupt:\n        pass\n    finally:\n        node.destroy_node()\n        rclpy.shutdown()\n\n\nif __name__ == '__main__':\n    main()\n",
+        "solutionCode": "import math\n\nimport rclpy\nfrom rclpy.node import Node\nfrom geometry_msgs.msg import TransformStamped\nfrom tf2_ros import TransformBroadcaster\n\n\nclass TfCirclePublisher(Node):\n    def __init__(self):\n        super().__init__('tf_circle_publisher')\n        self.br = TransformBroadcaster(self)\n        self.start = self.get_clock().now()\n        self.timer = self.create_timer(0.1, self.tick)\n\n    def tick(self):\n        now = self.get_clock().now()\n        elapsed = (now - self.start).nanoseconds * 1e-9\n\n        t = TransformStamped()\n        t.header.stamp = now.to_msg()\n        t.header.frame_id = 'map'\n        t.child_frame_id = 'camera_link'\n        t.transform.translation.x = math.cos(elapsed)\n        t.transform.translation.y = math.sin(elapsed)\n        t.transform.translation.z = 0.0\n        t.transform.rotation.x = 0.0\n        t.transform.rotation.y = 0.0\n        t.transform.rotation.z = 0.0\n        t.transform.rotation.w = 1.0\n        self.br.sendTransform(t)\n\n\ndef main(args=None):\n    rclpy.init(args=args)\n    node = TfCirclePublisher()\n    try:\n        rclpy.spin(node)\n    except KeyboardInterrupt:\n        pass\n    finally:\n        node.destroy_node()\n        rclpy.shutdown()\n\n\nif __name__ == '__main__':\n    main()\n",
+        "supportFiles": {}
+      },
+      "verification": {
+        "strategy": "ros_graph",
+        "humanDescription": "Passed when a transform from parent frame 'map' to child frame 'camera_link' is observed on /tf, with a valid (non-zero, normalized) quaternion and a translation that visibly changes over successive samples, confirming a dynamic broadcast.",
+        "checks": [
+          {
+            "kind": "node_exists",
+            "description": "The tf_circle_publisher node is alive on the graph.",
+            "params": {
+              "nodeName": "tf_circle_publisher"
+            }
+          },
+          {
+            "kind": "tf_published",
+            "description": "A transform map -> camera_link appears on /tf with valid framing and rotation.",
+            "params": {
+              "parentFrame": "map",
+              "childFrame": "camera_link",
+              "topic": "/tf",
+              "requireValidQuaternion": true
+            }
+          },
+          {
+            "kind": "tf_published",
+            "description": "Translation differs across samples, proving the transform is dynamic.",
+            "params": {
+              "parentFrame": "map",
+              "childFrame": "camera_link",
+              "topic": "/tf",
+              "requireMotion": true,
+              "minSamples": 3,
+              "minTranslationDelta": 0.05
+            }
+          }
+        ],
+        "timeoutSeconds": 20,
+        "harnessNotes": "The harness launches the student node, then runs a probe node that subscribes to /tf using a tf2_ros.Buffer + TransformListener. It collects at least 3 stamped transforms over ~1.5s. It asserts (a) the node tf_circle_publisher is present via the graph API, (b) a transform with header.frame_id == 'map' and child_frame_id == 'camera_link' exists, (c) the quaternion norm is approximately 1.0 (rejecting the all-zero default), and (d) the Euclidean distance between the first and last sampled translation exceeds 0.05 m, confirming time-varying motion rather than a static transform. Use simulated/wall clock consistently across student and probe."
+      }
+    },
+    {
+      "id": "module-11",
+      "phase": 3,
+      "order": 11,
+      "title": "Data Recording & Playback (rosbag2_py)",
+      "topic": "Recording topic data to disk and replaying it later, driven programmatically through the rosbag2_py API instead of the CLI.",
+      "estimatedMinutes": 45,
+      "learningObjectives": [
+        "Describe what a rosbag is and why offline recording is essential for robotics development.",
+        "Configure a bag with StorageOptions and ConverterOptions.",
+        "Register a topic with TopicMetadata before writing to it.",
+        "Serialize a ROS message and write it to a bag using SequentialWriter and serialize_message."
+      ],
+      "lesson": {
+        "markdown": "# Data Recording & Playback (rosbag2_py)\n\nIn 2D CV you saved datasets as folders of images and label files so you could train and debug without re-running the camera. Robotics has the same need, but the data is a flood of *timestamped messages* across many topics: images, LiDAR, IMU, transforms, all interleaved. A **rosbag** is the dataset format that captures that flood and lets you replay it byte-for-byte later. Record a tricky bug once at 2 a.m., replay it a hundred times at your desk.\n\nMost people record with the CLI (`ros2 bag record`). But sometimes you need to build a bag *programmatically*, for example to synthesize test fixtures, convert another format into a bag, or write a custom logger. That is what `rosbag2_py` is for, and that is what you will do here, with no CLI at all.\n\n## The four ingredients\n\nWriting a bag in Python needs four pieces from `rosbag2_py` plus one serialization helper:\n\n```python\nimport rosbag2_py\nfrom rclpy.serialization import serialize_message\n```\n\n**StorageOptions** says *where* the bag lives and what backend stores it:\n\n```python\nstorage = rosbag2_py.StorageOptions(uri='/tmp/my_bag', storage_id='sqlite3')\n```\n\nThe `uri` is a directory that rosbag2 creates. `sqlite3` is the classic backend (`mcap` is the modern one); both ship with Humble/Jazzy.\n\n**ConverterOptions** says how messages are serialized on the wire. For normal recording, leave both formats as `cdr`, the default ROS serialization:\n\n```python\nconverter = rosbag2_py.ConverterOptions(\n    input_serialization_format='cdr',\n    output_serialization_format='cdr')\n```\n\n**SequentialWriter** is the object that actually writes:\n\n```python\nwriter = rosbag2_py.SequentialWriter()\nwriter.open(storage, converter)\n```\n\n**TopicMetadata** declares a topic *before* you write any message to it, the bag's equivalent of a table schema:\n\n```python\ntopic_info = rosbag2_py.TopicMetadata(\n    name='/chatter',\n    type='std_msgs/msg/String',\n    serialization_format='cdr')\nwriter.create_topic(topic_info)\n```\n\nDepending on your distro `TopicMetadata` may also accept an `id` field; the keyword form above is portable.\n\n## Writing a message\n\nUnlike a live publisher, the writer does not take a Python message object directly. You must **serialize** it to raw bytes first, then hand over the topic name, the bytes, and a timestamp in nanoseconds:\n\n```python\nfrom std_msgs.msg import String\n\nmsg = String()\nmsg.data = 'hello bag'\n\nstamp_ns = node.get_clock().now().nanoseconds\nwriter.write('/chatter', serialize_message(msg), stamp_ns)\n```\n\nThe topic name passed to `write` must match a topic you already registered with `create_topic`, or the call fails. The timestamp is what playback uses to reproduce timing, so it matters.\n\n## Playback in one breath\n\nReading mirrors writing: open a `SequentialReader` with the same `StorageOptions`, then loop `while reader.has_next(): (topic, data, t) = reader.read_next()` and call `deserialize_message(data, MsgType)` to get your object back. The grader for this exercise will do exactly that to your bag.\n\nIn the exercise you will open a writer at a sandbox path, register a `std_msgs/msg/String` topic, serialize one message, and write it, building a valid, replayable bag entirely in code."
+      },
+      "exercise": {
+        "prompt": "Complete write_bag() so it programmatically creates a rosbag at the provided bag_uri using only the rosbag2_py API (no CLI). Open a SequentialWriter with StorageOptions (sqlite3) and default cdr ConverterOptions, register a topic '/chatter' of type 'std_msgs/msg/String' via TopicMetadata, then serialize a String message whose data is 'hello bag' and write it with a current timestamp in nanoseconds. The bag_uri is supplied by the harness and points inside a sandbox temp directory.",
+        "type": "python",
+        "editorLanguage": "python",
+        "starterCode": "import sys\n\nimport rclpy\nfrom rclpy.node import Node\nfrom rclpy.serialization import serialize_message\nfrom std_msgs.msg import String\nimport rosbag2_py\n\n\ndef write_bag(bag_uri: str):\n    node = rclpy.create_node('bag_writer')\n\n    # TODO: build StorageOptions for `bag_uri` using the 'sqlite3' storage backend\n    storage_options = None\n    # TODO: build ConverterOptions with input/output serialization format 'cdr'\n    converter_options = None\n\n    writer = rosbag2_py.SequentialWriter()\n    # TODO: open the writer with the storage and converter options\n\n    # TODO: create a TopicMetadata for '/chatter', type 'std_msgs/msg/String',\n    #       serialization_format 'cdr', and register it with writer.create_topic(...)\n\n    msg = String()\n    msg.data = 'hello bag'\n    stamp_ns = node.get_clock().now().nanoseconds\n\n    # TODO: serialize `msg` and write it to '/chatter' with `stamp_ns`\n\n    node.destroy_node()\n\n\ndef main(args=None):\n    rclpy.init(args=args)\n    bag_uri = sys.argv[1] if len(sys.argv) > 1 else '/tmp/student_bag'\n    write_bag(bag_uri)\n    rclpy.shutdown()\n\n\nif __name__ == '__main__':\n    main()\n",
+        "solutionCode": "import sys\n\nimport rclpy\nfrom rclpy.serialization import serialize_message\nfrom std_msgs.msg import String\nimport rosbag2_py\n\n\ndef write_bag(bag_uri: str):\n    node = rclpy.create_node('bag_writer')\n\n    storage_options = rosbag2_py.StorageOptions(uri=bag_uri, storage_id='sqlite3')\n    converter_options = rosbag2_py.ConverterOptions(\n        input_serialization_format='cdr',\n        output_serialization_format='cdr')\n\n    writer = rosbag2_py.SequentialWriter()\n    writer.open(storage_options, converter_options)\n\n    topic_info = rosbag2_py.TopicMetadata(\n        name='/chatter',\n        type='std_msgs/msg/String',\n        serialization_format='cdr')\n    writer.create_topic(topic_info)\n\n    msg = String()\n    msg.data = 'hello bag'\n    stamp_ns = node.get_clock().now().nanoseconds\n\n    writer.write('/chatter', serialize_message(msg), stamp_ns)\n\n    node.destroy_node()\n\n\ndef main(args=None):\n    rclpy.init(args=args)\n    bag_uri = sys.argv[1] if len(sys.argv) > 1 else '/tmp/student_bag'\n    write_bag(bag_uri)\n    rclpy.shutdown()\n\n\nif __name__ == '__main__':\n    main()\n",
+        "supportFiles": {}
+      },
+      "verification": {
+        "strategy": "file_check",
+        "humanDescription": "Passed when the script produces a real rosbag at the sandbox path that, when reopened, contains exactly one message on topic '/chatter' of type 'std_msgs/msg/String' whose deserialized data equals 'hello bag'.",
+        "checks": [
+          {
+            "kind": "bag_file_written",
+            "description": "A valid rosbag directory with metadata and storage files exists at the sandbox bag uri.",
+            "params": {
+              "bagUriEnv": "STUDENT_BAG_URI",
+              "requireMetadataYaml": true
+            }
+          },
+          {
+            "kind": "bag_file_written",
+            "description": "Reopening the bag yields one '/chatter' std_msgs/msg/String message equal to 'hello bag'.",
+            "params": {
+              "bagUriEnv": "STUDENT_BAG_URI",
+              "expectTopic": "/chatter",
+              "expectType": "std_msgs/msg/String",
+              "expectCount": 1,
+              "expectDeserializedField": {
+                "field": "data",
+                "value": "hello bag"
+              }
+            }
+          }
+        ],
+        "timeoutSeconds": 20,
+        "harnessNotes": "The harness creates a fresh sandbox temp directory (e.g. via mkdtemp) and passes a bag uri inside it as argv[1], also exporting it as STUDENT_BAG_URI; it runs the student script, then independently opens that bag with a rosbag2_py.SequentialReader configured with matching StorageOptions(storage_id='sqlite3') and cdr ConverterOptions. It first asserts the bag directory and its metadata.yaml exist. It then reads topic metadata and asserts '/chatter' is registered as 'std_msgs/msg/String', loops read_next() to count messages (must be exactly 1), and deserialize_message(data, std_msgs.msg.String) on the single record, asserting .data == 'hello bag'. The temp directory is removed after grading."
+      }
+    },
+    {
+      "id": "module-12",
+      "phase": 3,
+      "order": 12,
+      "title": "Visualization Pipelines (RViz2 & Foxglove Studio)",
+      "topic": "Turning robot data into visual primitives like PointClouds, Markers, and Odometry that RViz2 and Foxglove Studio can render.",
+      "estimatedMinutes": 45,
+      "learningObjectives": [
+        "Explain the role of RViz2 and Foxglove Studio as subscribers that render topics.",
+        "Choose the right visualization_msgs marker type for a given shape.",
+        "Populate a Marker with frame_id, type, pose, scale, color, and a unique id.",
+        "Publish a MarkerArray of 3D bounding boxes consumable over a Foxglove WebSocket bridge."
+      ],
+      "lesson": {
+        "markdown": "# Visualization Pipelines (RViz2 & Foxglove Studio)\n\nIn 2D CV, debugging meant drawing boxes on an image with OpenCV and looking at the result. In ROS 2 you do not draw directly. Instead you *publish a topic describing what you want drawn*, and a separate viewer renders it. The two big viewers are **RViz2** (the classic native desktop tool) and **Foxglove Studio** (a modern app that runs in the browser and connects over a WebSocket bridge, great for remote robots). Both are just subscribers. Your node is the source of truth.\n\nThis decoupling is powerful: the same publisher feeds a developer's RViz2 today and a teammate's browser Foxglove session tomorrow, with no code change.\n\n## Three kinds of visual data\n\n- **PointClouds** (`sensor_msgs/msg/PointCloud2`): raw 3D points from a depth camera or LiDAR.\n- **Odometry** (`nav_msgs/msg/Odometry`): where the robot thinks it is and how fast it is moving.\n- **Markers** (`visualization_msgs/msg/Marker` and `MarkerArray`): arbitrary shapes *you* define, cubes, spheres, arrows, text, lines. Markers are how you draw your *own* annotations, exactly like those OpenCV boxes, but in 3D.\n\nFor 3D object detection, the natural output is a set of CUBE markers, one box per detected object. A `MarkerArray` is just a list of `Marker` messages published together.\n\n## Anatomy of a CUBE marker\n\n```python\nfrom visualization_msgs.msg import Marker, MarkerArray\n\nm = Marker()\nm.header.frame_id = 'map'\nm.header.stamp = node.get_clock().now().to_msg()\nm.ns = 'detections'\nm.id = 0                       # MUST be unique within the namespace\nm.type = Marker.CUBE\nm.action = Marker.ADD\nm.pose.position.x = 1.0\nm.pose.position.y = 2.0\nm.pose.position.z = 0.5\nm.pose.orientation.w = 1.0     # identity rotation\nm.scale.x = 1.0                # box dimensions in meters\nm.scale.y = 0.5\nm.scale.z = 0.8\nm.color.r = 1.0\nm.color.g = 0.0\nm.color.b = 0.0\nm.color.a = 1.0                # alpha; 0 means invisible!\n```\n\nThree gotchas trip up everyone:\n\n1. **`color.a` must be > 0.** A marker with alpha 0 is fully transparent and looks like a bug ('my markers do not show up!').\n2. **`scale` must be non-zero.** A cube with `scale.x = 0` has no width and renders as nothing.\n3. **`id` must be unique** within a namespace. Reusing an id means the second marker *overwrites* the first, so a four-object array with all ids = 0 shows one box.\n\n## Building the array\n\n```python\narr = MarkerArray()\nfor i, box in enumerate(boxes):\n    m = Marker()\n    m.header.frame_id = 'map'\n    m.header.stamp = node.get_clock().now().to_msg()\n    m.ns = 'detections'\n    m.id = i\n    m.type = Marker.CUBE\n    m.action = Marker.ADD\n    m.pose.position.x = box['x']\n    m.pose.orientation.w = 1.0\n    m.scale.x = m.scale.y = m.scale.z = 1.0\n    m.color.g = 1.0\n    m.color.a = 1.0\n    arr.markers.append(m)\npublisher.publish(arr)\n```\n\nWhen Foxglove connects through the `foxglove_bridge` WebSocket, it subscribes to your `MarkerArray` topic and renders every cube in 3D in the browser, in real time. In the exercise you will publish a `MarkerArray` of three CUBE bounding boxes on a timer, each with a unique id, a valid frame, non-zero scale, and visible color, ready for a web Foxglove client to render."
+      },
+      "exercise": {
+        "prompt": "Complete the BoxMarkerPublisher node so it publishes a visualization_msgs/msg/MarkerArray on '/detected_boxes' at 2 Hz. Build three CUBE markers (Marker.CUBE, Marker.ADD) in frame 'map', each with a unique id, a non-zero scale on all three axes, an identity orientation, and a visible color (alpha = 1.0). Append them to the MarkerArray and publish.",
+        "type": "python",
+        "editorLanguage": "python",
+        "starterCode": "import rclpy\nfrom rclpy.node import Node\nfrom visualization_msgs.msg import Marker, MarkerArray\n\n\nclass BoxMarkerPublisher(Node):\n    def __init__(self):\n        super().__init__('box_marker_publisher')\n        # TODO: create a publisher of MarkerArray on '/detected_boxes'\n        self.pub = None\n        # TODO: create a 0.5s (2 Hz) timer calling self.publish_boxes\n        self.boxes = [\n            {'x': 1.0, 'y': 0.0, 'z': 0.5},\n            {'x': 2.0, 'y': 1.0, 'z': 0.5},\n            {'x': 3.0, 'y': -1.0, 'z': 0.5},\n        ]\n\n    def publish_boxes(self):\n        arr = MarkerArray()\n        for i, box in enumerate(self.boxes):\n            m = Marker()\n            m.header.frame_id = 'map'\n            m.header.stamp = self.get_clock().now().to_msg()\n            m.ns = 'detections'\n            # TODO: set a unique id from `i`\n            # TODO: set type to Marker.CUBE and action to Marker.ADD\n            # TODO: set pose position from `box` and orientation.w = 1.0\n            # TODO: set scale.x/y/z to non-zero box dimensions\n            # TODO: set a visible color (a = 1.0)\n            arr.markers.append(m)\n        # TODO: publish the MarkerArray\n\n\ndef main(args=None):\n    rclpy.init(args=args)\n    node = BoxMarkerPublisher()\n    try:\n        rclpy.spin(node)\n    except KeyboardInterrupt:\n        pass\n    finally:\n        node.destroy_node()\n        rclpy.shutdown()\n\n\nif __name__ == '__main__':\n    main()\n",
+        "solutionCode": "import rclpy\nfrom rclpy.node import Node\nfrom visualization_msgs.msg import Marker, MarkerArray\n\n\nclass BoxMarkerPublisher(Node):\n    def __init__(self):\n        super().__init__('box_marker_publisher')\n        self.pub = self.create_publisher(MarkerArray, '/detected_boxes', 10)\n        self.timer = self.create_timer(0.5, self.publish_boxes)\n        self.boxes = [\n            {'x': 1.0, 'y': 0.0, 'z': 0.5},\n            {'x': 2.0, 'y': 1.0, 'z': 0.5},\n            {'x': 3.0, 'y': -1.0, 'z': 0.5},\n        ]\n\n    def publish_boxes(self):\n        arr = MarkerArray()\n        for i, box in enumerate(self.boxes):\n            m = Marker()\n            m.header.frame_id = 'map'\n            m.header.stamp = self.get_clock().now().to_msg()\n            m.ns = 'detections'\n            m.id = i\n            m.type = Marker.CUBE\n            m.action = Marker.ADD\n            m.pose.position.x = box['x']\n            m.pose.position.y = box['y']\n            m.pose.position.z = box['z']\n            m.pose.orientation.x = 0.0\n            m.pose.orientation.y = 0.0\n            m.pose.orientation.z = 0.0\n            m.pose.orientation.w = 1.0\n            m.scale.x = 1.0\n            m.scale.y = 0.6\n            m.scale.z = 0.8\n            m.color.r = 0.0\n            m.color.g = 1.0\n            m.color.b = 0.0\n            m.color.a = 1.0\n            arr.markers.append(m)\n        self.pub.publish(arr)\n\n\ndef main(args=None):\n    rclpy.init(args=args)\n    node = BoxMarkerPublisher()\n    try:\n        rclpy.spin(node)\n    except KeyboardInterrupt:\n        pass\n    finally:\n        node.destroy_node()\n        rclpy.shutdown()\n\n\nif __name__ == '__main__':\n    main()\n",
+        "supportFiles": {}
+      },
+      "verification": {
+        "strategy": "introspection",
+        "humanDescription": "Passed when a MarkerArray on '/detected_boxes' is received containing multiple CUBE markers, each with a non-zero scale, a non-empty frame_id, a visible (alpha > 0) color, and ids that are unique within the array.",
+        "checks": [
+          {
+            "kind": "topic_msg_type",
+            "description": "'/detected_boxes' publishes visualization_msgs/msg/MarkerArray.",
+            "params": {
+              "topic": "/detected_boxes",
+              "expectedType": "visualization_msgs/msg/MarkerArray"
+            }
+          },
+          {
+            "kind": "marker_array_valid",
+            "description": "Markers are CUBE, well-formed, visible, and uniquely identified.",
+            "params": {
+              "topic": "/detected_boxes",
+              "minMarkers": 2,
+              "requireType": "CUBE",
+              "requireNonZeroScale": true,
+              "requireNonEmptyFrameId": true,
+              "requireAlphaGreaterThanZero": true,
+              "requireUniqueIds": true
+            }
+          }
+        ],
+        "timeoutSeconds": 20,
+        "harnessNotes": "The harness launches the student node and runs a probe subscriber on '/detected_boxes' typed as visualization_msgs/msg/MarkerArray (matching the QoS, depth 10). It waits up to the timeout for the first message. It asserts the topic type via the graph introspection API, then for the captured MarkerArray asserts: markers list length >= 2; every marker.type == Marker.CUBE (3); every marker.scale.x/y/z > 0; every marker.header.frame_id is a non-empty string; every marker.color.a > 0; and the set of (ns, id) pairs has no duplicates. This mirrors what a Foxglove WebSocket client needs to actually render the boxes, so passing means the output is valid for a web visualization session."
+      }
+    },
+    {
+      "id": "module-13",
+      "phase": 3,
+      "order": 13,
+      "title": "Simulation Environments (Gazebo)",
+      "topic": "Bridging ROS 2 with the Gazebo physics simulator so nodes can react to simulated sensors before touching real hardware.",
+      "estimatedMinutes": 45,
+      "learningObjectives": [
+        "Explain why simulation accelerates and de-risks robotics development.",
+        "Describe how ros_gz_bridge connects Gazebo Harmonic topics to ROS 2 topics.",
+        "Subscribe to a sensor_msgs/msg/LaserScan and interpret its ranges array.",
+        "Implement a reactive safety node that triggers an emergency stop on a near obstacle."
+      ],
+      "lesson": {
+        "markdown": "# Simulation Environments (Gazebo)\n\nYou cannot crash a simulated robot into a wall and break it. That is the whole pitch for simulation: test perception and control logic against realistic physics and sensors with zero hardware risk, then run the *same* node on the real robot. Today's standard simulator is **Gazebo** (the modern 'Gazebo Harmonic' line, formerly 'Ignition'). It computes physics, renders sensors, and publishes their data.\n\n## Gazebo speaks its own language: the bridge\n\nGazebo has its own transport system, separate from ROS 2's DDS. To get a simulated LiDAR scan from Gazebo into your rclpy node, you run **`ros_gz_bridge`**, a process that translates messages back and forth:\n\n```bash\nros2 run ros_gz_bridge parameter_bridge \\\n  /scan@sensor_msgs/msg/LaserScan@gz.msgs.LaserScan\n```\n\nThe triple-`@` syntax is `ros_topic@ros_type@gz_type`. After this runs, a `/scan` topic appears on the ROS 2 graph carrying `sensor_msgs/msg/LaserScan`, and your node neither knows nor cares the data originated in Gazebo. That is the beauty of the bridge: your subscriber code is identical whether the data comes from a sim or a real LiDAR.\n\n## Reading a LaserScan\n\nA `sensor_msgs/msg/LaserScan` is a 1D sweep of distances. The key field is `ranges`, a list of floats, one distance per angular step:\n\n```python\nfrom sensor_msgs.msg import LaserScan\n\ndef on_scan(self, msg: LaserScan):\n    # msg.angle_min, msg.angle_max, msg.angle_increment describe the sweep\n    # msg.range_min, msg.range_max bound valid readings\n    valid = [r for r in msg.ranges\n             if msg.range_min <= r <= msg.range_max]\n    closest = min(valid) if valid else float('inf')\n```\n\nReal sensors return `inf` or `nan` for 'no return' and out-of-range values, so always filter before calling `min`. A naive `min(msg.ranges)` can return `0.0` or `nan` and make you stop forever or never.\n\n## A reactive emergency stop\n\nThe classic safety reflex: if anything is closer than a threshold, stop the robot. We publish a zero `geometry_msgs/msg/Twist` (no linear, no angular velocity) to the drive topic, which commands the base to halt:\n\n```python\nfrom geometry_msgs.msg import Twist\n\nTHRESHOLD = 0.5  # meters\n\ndef on_scan(self, msg):\n    valid = [r for r in msg.ranges\n             if msg.range_min <= r <= msg.range_max]\n    closest = min(valid) if valid else float('inf')\n    if closest < THRESHOLD:\n        stop = Twist()        # all zeros == full stop\n        self.cmd_pub.publish(stop)\n        self.get_logger().warn(f'E-STOP: obstacle at {closest:.2f} m')\n```\n\nBecause this is just a ROS 2 subscriber + publisher, the exact same node protects a Gazebo robot and a physical one. In simulation you can deliberately spawn a wall 0.3 m away and watch the stop fire, something you would never risk with real hardware.\n\nIn the exercise you will write this node: subscribe to `/scan` (`sensor_msgs/msg/LaserScan`), compute the closest *valid* range, and when it drops below 0.5 m, publish a zero `Twist` on `/cmd_vel` as the emergency stop. The grader will inject a scan with a planted close obstacle and confirm your stop fires."
+      },
+      "exercise": {
+        "prompt": "Complete the EmergencyStop node. Subscribe to '/scan' (sensor_msgs/msg/LaserScan) and publish geometry_msgs/msg/Twist on '/cmd_vel'. In the scan callback, compute the closest VALID range (ignore values outside [range_min, range_max] and non-finite readings); if it is below 0.5 m, publish a zero Twist (all fields 0.0) as the emergency stop. The harness will publish a synthetic LaserScan containing a reading inside 0.5 m.",
+        "type": "python",
+        "editorLanguage": "python",
+        "starterCode": "import math\n\nimport rclpy\nfrom rclpy.node import Node\nfrom sensor_msgs.msg import LaserScan\nfrom geometry_msgs.msg import Twist\n\n\nclass EmergencyStop(Node):\n    THRESHOLD = 0.5  # meters\n\n    def __init__(self):\n        super().__init__('emergency_stop')\n        # TODO: create a publisher of Twist on '/cmd_vel'\n        self.cmd_pub = None\n        # TODO: create a subscription to LaserScan on '/scan' calling self.on_scan\n\n    def on_scan(self, msg: LaserScan):\n        # TODO: build a list of valid ranges within [msg.range_min, msg.range_max]\n        #       that are finite (skip inf / nan)\n        # TODO: compute the closest valid range (inf if none)\n        # TODO: if closest < self.THRESHOLD, publish a zero Twist on /cmd_vel\n        pass\n\n\ndef main(args=None):\n    rclpy.init(args=args)\n    node = EmergencyStop()\n    try:\n        rclpy.spin(node)\n    except KeyboardInterrupt:\n        pass\n    finally:\n        node.destroy_node()\n        rclpy.shutdown()\n\n\nif __name__ == '__main__':\n    main()\n",
+        "solutionCode": "import math\n\nimport rclpy\nfrom rclpy.node import Node\nfrom sensor_msgs.msg import LaserScan\nfrom geometry_msgs.msg import Twist\n\n\nclass EmergencyStop(Node):\n    THRESHOLD = 0.5  # meters\n\n    def __init__(self):\n        super().__init__('emergency_stop')\n        self.cmd_pub = self.create_publisher(Twist, '/cmd_vel', 10)\n        self.sub = self.create_subscription(LaserScan, '/scan', self.on_scan, 10)\n\n    def on_scan(self, msg: LaserScan):\n        valid = [r for r in msg.ranges\n                 if math.isfinite(r) and msg.range_min <= r <= msg.range_max]\n        closest = min(valid) if valid else float('inf')\n        if closest < self.THRESHOLD:\n            stop = Twist()\n            stop.linear.x = 0.0\n            stop.linear.y = 0.0\n            stop.linear.z = 0.0\n            stop.angular.x = 0.0\n            stop.angular.y = 0.0\n            stop.angular.z = 0.0\n            self.cmd_pub.publish(stop)\n            self.get_logger().warn(f'E-STOP: obstacle at {closest:.2f} m')\n\n\ndef main(args=None):\n    rclpy.init(args=args)\n    node = EmergencyStop()\n    try:\n        rclpy.spin(node)\n    except KeyboardInterrupt:\n        pass\n    finally:\n        node.destroy_node()\n        rclpy.shutdown()\n\n\nif __name__ == '__main__':\n    main()\n",
+        "supportFiles": {}
+      },
+      "verification": {
+        "strategy": "ros_graph",
+        "humanDescription": "Passed when, after a synthetic LaserScan with an obstacle closer than 0.5 m is injected on '/scan', the node publishes a zero geometry_msgs/msg/Twist on '/cmd_vel'.",
+        "checks": [
+          {
+            "kind": "node_exists",
+            "description": "The emergency_stop node is present and subscribed to /scan.",
+            "params": {
+              "nodeName": "emergency_stop",
+              "requireSubscription": "/scan"
+            }
+          },
+          {
+            "kind": "topic_published",
+            "description": "A zero Twist e-stop is published on /cmd_vel in response to the close scan.",
+            "params": {
+              "topic": "/cmd_vel",
+              "expectedType": "geometry_msgs/msg/Twist",
+              "expectZeroTwist": true
+            }
+          }
+        ],
+        "timeoutSeconds": 20,
+        "harnessNotes": "The harness launches the student node, then runs a probe that publishes one synthetic sensor_msgs/msg/LaserScan on '/scan' with angle_min=-1.57, angle_max=1.57, range_min=0.05, range_max=10.0, and a ranges array padded with large values (e.g. 5.0) plus a planted close reading of 0.30 m (and some inf entries to verify filtering). The probe subscribes to '/cmd_vel' as geometry_msgs/msg/Twist. It asserts the emergency_stop node exists and subscribes to /scan, then that within the timeout at least one Twist arrives on /cmd_vel with all six components equal to 0.0 (zero e-stop). A negative phase (publishing a scan whose closest valid range is 2.0 m) may optionally confirm no Twist is published when nothing is near."
+      }
+    },
+    {
+      "id": "module-14",
+      "phase": 3,
+      "order": 14,
+      "title": "Command Line Introspection & Debugging",
+      "topic": "Using the ros2 CLI to inspect a live system's topics, message types, and structures, and to inject test messages by hand.",
+      "estimatedMinutes": 35,
+      "learningObjectives": [
+        "Discover the message type of an unknown topic with ros2 topic type.",
+        "Inspect the fields of a message definition with ros2 interface show.",
+        "Hand-publish a well-formed message to a topic with ros2 topic pub.",
+        "Sequence CLI introspection commands into an effective debugging workflow."
+      ],
+      "lesson": {
+        "markdown": "# Command Line Introspection & Debugging\n\nWhen a robot misbehaves, you do not start by reading code, you start by *interrogating the running system*. The `ros2` CLI is your stethoscope. Before writing any node, you can ask the live graph what topics exist, what they carry, and what they expect, and you can poke them with test data. This module is hands-on with the terminal, no Python.\n\n## The discovery workflow\n\nImagine you join a project and see a topic `/turtle1/cmd_vel` flickering in `ros2 topic list`, but you have no idea what it is or how to drive it. There is a reliable three-step workflow.\n\n### Step 1: What type is it?\n\n```bash\nros2 topic type /turtle1/cmd_vel\n```\n\nThis prints the fully qualified message type, for example:\n\n```\ngeometry_msgs/msg/Twist\n```\n\nNow you know the *kind* of data, but not its shape.\n\n### Step 2: What is inside that type?\n\n```bash\nros2 interface show geometry_msgs/msg/Twist\n```\n\nThis prints the message definition so you know exactly which fields to fill:\n\n```\nVector3  linear\n\tfloat64 x\n\tfloat64 y\n\tfloat64 z\nVector3  angular\n\tfloat64 x\n\tfloat64 y\n\tfloat64 z\n```\n\nNote: it is `ros2 interface show`, not the old ROS 1 `rosmsg show`. The argument is the type string you got from step 1, not the topic name, a very common mix-up.\n\n### Step 3: Send a test message\n\nNow you can publish a hand-crafted message to see what it does:\n\n```bash\nros2 topic pub --once /turtle1/cmd_vel geometry_msgs/msg/Twist \"{linear: {x: 2.0}, angular: {z: 1.8}}\"\n```\n\nBreaking this down:\n\n- `--once` publishes a single message and exits. Without it, `ros2 topic pub` publishes repeatedly at 1 Hz until you Ctrl-C.\n- The arguments are `topic`, then `type`, then the message data as a **YAML string**.\n- Any field you omit defaults to zero, so you only specify what you care about.\n\n## Other tools in the kit\n\n- `ros2 topic echo /turtle1/cmd_vel` prints messages as they arrive, the single most used debugging command.\n- `ros2 topic hz /turtle1/cmd_vel` measures publish rate.\n- `ros2 node list` and `ros2 node info <node>` show who is connected to what.\n- `ros2 interface list` shows every message type installed.\n- `rqt` and `rqt_graph` give a GUI view of the same information, with `rqt_graph` drawing the live node/topic graph as a diagram, invaluable for spotting a topic name typo where two nodes are 'connected' but actually on different names.\n\nThis type -> show -> pub loop is the fastest way to understand and exercise an unfamiliar topic without writing a line of code. In the exercise you will run exactly this sequence against an unknown topic in a simulated terminal: discover its type, inspect its structure, then publish one test message to it."
+      },
+      "exercise": {
+        "prompt": "In the simulated terminal there is one unknown topic, /turtle1/cmd_vel, already present on the graph. Using only the ros2 CLI, type the correct sequence of commands to (1) find the topic's message type, (2) display that message type's structure, and (3) publish a single test message to the topic. Run them in order, one command per line.",
+        "type": "terminal",
+        "editorLanguage": "bash",
+        "starterCode": "# A running system exposes ONE unknown topic: /turtle1/cmd_vel\n# You do NOT yet know its message type or fields.\n#\n# Your task, using only the ros2 CLI (one command per line):\n#   1. Find the MESSAGE TYPE of /turtle1/cmd_vel\n#   2. Show the STRUCTURE (fields) of that message type\n#   3. PUBLISH a single test message to /turtle1/cmd_vel\n#\n# Hint: the three commands you need are\n#   ros2 topic type ...\n#   ros2 interface show ...\n#   ros2 topic pub --once ...\n#\n# Type your commands below:\n",
+        "solutionCode": "ros2 topic type /turtle1/cmd_vel\nros2 interface show geometry_msgs/msg/Twist\nros2 topic pub --once /turtle1/cmd_vel geometry_msgs/msg/Twist \"{linear: {x: 2.0}, angular: {z: 1.8}}\"\n",
+        "supportFiles": {}
+      },
+      "verification": {
+        "strategy": "terminal_sequence",
+        "humanDescription": "Passed when the user runs, in order, a command that queries the type of /turtle1/cmd_vel, then shows the structure of geometry_msgs/msg/Twist, then publishes a single Twist message to /turtle1/cmd_vel.",
+        "checks": [
+          {
+            "kind": "command_sequence",
+            "description": "Three introspection/publish commands appear in the correct relative order.",
+            "params": {
+              "ordered": true,
+              "steps": [
+                {
+                  "name": "discover-type",
+                  "kind": "command_matches",
+                  "regex": "^\\s*ros2\\s+topic\\s+type\\s+/turtle1/cmd_vel\\s*$"
+                },
+                {
+                  "name": "discover-structure",
+                  "kind": "command_matches",
+                  "regex": "^\\s*ros2\\s+interface\\s+show\\s+geometry_msgs/msg/Twist\\s*$"
+                },
+                {
+                  "name": "publish-message",
+                  "kind": "command_matches",
+                  "regex": "^\\s*ros2\\s+topic\\s+pub\\s+(--once\\s+|-1\\s+)?/turtle1/cmd_vel\\s+geometry_msgs/msg/Twist\\s+.+$"
+                }
+              ]
+            }
+          }
+        ],
+        "timeoutSeconds": 20,
+        "harnessNotes": "The harness runs a simulated ros2 CLI environment with a single pre-registered topic /turtle1/cmd_vel of type geometry_msgs/msg/Twist (no real DDS needed; a fixture maps topic->type and type->definition). Each typed line is captured and matched against the ordered regex steps. Step 1 must be exactly 'ros2 topic type /turtle1/cmd_vel'. Step 2 must be 'ros2 interface show geometry_msgs/msg/Twist' (the type string the simulator returned for step 1; the matcher can also accept the type echoed from step 1's stdout). Step 3 must be a 'ros2 topic pub' to /turtle1/cmd_vel with type geometry_msgs/msg/Twist and a non-empty YAML payload, with optional --once or -1 single-shot flag. Commands must appear in this relative order; extra exploratory commands (ros2 topic list, echo) between them are ignored. The simulator returns canned realistic stdout for each command so the user can read the type and fields just like a live system."
+      }
+    }
+  ]
+}

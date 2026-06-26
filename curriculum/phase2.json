@@ -1,0 +1,204 @@
+[
+  {
+    "id": "module-6",
+    "phase": 2,
+    "order": 6,
+    "title": "Image Pipelines & cv_bridge",
+    "topic": "Bridging ROS 2 sensor_msgs/Image transport with OpenCV/NumPy arrays using cv_bridge to build subscribe-process-republish image pipelines.",
+    "estimatedMinutes": 40,
+    "learningObjectives": [
+      "Explain why ROS 2 ships images as sensor_msgs/msg/Image instead of raw cv::Mat / numpy arrays.",
+      "Convert between sensor_msgs/msg/Image and an OpenCV/NumPy matrix in both directions with cv_bridge.",
+      "Reason about image encodings ('bgr8', 'mono8', '16UC1') and why choosing the wrong one corrupts pixels.",
+      "Build a node that subscribes to one image topic, applies an OpenCV filter, and republishes on another topic while preserving the header."
+    ],
+    "lesson": {
+      "markdown": "# Image Pipelines & cv_bridge\n\nIn your Stanford 2D CV work, an image was just a NumPy array: `img.shape == (H, W, 3)`, `img[y, x]` is a pixel, and you fed it straight into `cv2.cvtColor` or `cv2.GaussianBlur`. ROS 2 doesn't change any of that math. It only changes *how the array gets to you*.\n\n## Why ROS wraps your array in a message\n\nA camera node and your processing node are usually **separate processes** (often separate machines). You can't just pass a NumPy pointer across a network. So ROS 2 defines `sensor_msgs/msg/Image`: a serializable envelope holding the raw bytes plus the metadata you need to reinterpret them.\n\nThink of it like a shipping container for your array:\n\n```text\nheader   -> timestamp + frame_id (which camera, when)\nheight   -> rows (H)\nwidth    -> cols (W)\nencoding -> 'bgr8', 'mono8', '16UC1' ... how to read the bytes\nstep     -> bytes per row\ndata      -> the flat byte buffer (the actual pixels)\n```\n\nThe one trap: `encoding`. The bytes in `data` are meaningless until you know the layout. `'bgr8'` is a 3-channel 8-bit color image (note: **B**lue first, OpenCV's convention). `'mono8'` is single-channel grayscale. `'16UC1'` is a single channel of unsigned 16-bit values (you'll meet that in depth cameras next module). Hand the wrong encoding to the converter and you get garbage or a crash.\n\n## cv_bridge: the translator\n\nManually packing/unpacking `data` is error-prone. The `vision_opencv` stack gives you `cv_bridge`, which does exactly two jobs:\n\n```python\nfrom cv_bridge import CvBridge\nbridge = CvBridge()\n\n# ROS Image  ->  OpenCV/NumPy array\ncv_img = bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')\n\n# OpenCV/NumPy array  ->  ROS Image\nout_msg = bridge.cv2_to_imgmsg(cv_img, encoding='bgr8')\n```\n\nAfter `imgmsg_to_cv2`, `cv_img` is an ordinary NumPy array. Everything you already know works:\n\n```python\nimport cv2\ngray = cv2.cvtColor(cv_img, cv2.COLOR_BGR2GRAY)   # now single channel\nblur = cv2.GaussianBlur(cv_img, (5, 5), 0)\n```\n\nWhen you convert back, **match the encoding to the array shape**. A grayscale `(H, W)` array must go back as `'mono8'`, a `(H, W, 3)` color array as `'bgr8'`. Mismatching them is the #1 cv_bridge bug.\n\n## The subscribe-process-republish pattern\n\nAlmost every perception node follows the same shape: one subscription in, one publisher out, and a callback that does the work.\n\n```python\nclass FilterNode(Node):\n    def __init__(self):\n        super().__init__('filter_node')\n        self.bridge = CvBridge()\n        self.pub = self.create_publisher(Image, '/image_filtered', 10)\n        self.sub = self.create_subscription(\n            Image, '/image_raw', self.on_image, 10)\n\n    def on_image(self, msg):\n        cv_img = self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')\n        gray = cv2.cvtColor(cv_img, cv2.COLOR_BGR2GRAY)\n        out = self.bridge.cv2_to_imgmsg(gray, encoding='mono8')\n        out.header = msg.header        # preserve timestamp + frame_id\n        self.pub.publish(out)\n```\n\nCopying `msg.header` onto your output is not optional politeness. Downstream consumers use that timestamp to align this image with depth, IMU, or transform data. Drop it and you've broken time synchronization for everyone after you.\n\n## Mental model\n\nA ROS image pipeline is just your old OpenCV script with two thin adapters bolted on the ends: `imgmsg_to_cv2` at the inlet, `cv2_to_imgmsg` at the outlet. The interesting computer vision still happens on plain NumPy arrays in between. Master that translation boundary and the rest of perception in ROS 2 is the CV you already know."
+    },
+    "exercise": {
+      "prompt": "Complete a node that subscribes to '/image_raw' (sensor_msgs/msg/Image, 'bgr8'), converts it to an OpenCV array with cv_bridge, converts it to grayscale with cv2.cvtColor, and republishes the result on '/image_filtered' as a 'mono8' sensor_msgs/msg/Image. Copy the incoming header onto the outgoing message so timestamps are preserved.",
+      "type": "python",
+      "editorLanguage": "python",
+      "starterCode": "import rclpy\nfrom rclpy.node import Node\nfrom sensor_msgs.msg import Image\nfrom cv_bridge import CvBridge\nimport cv2\n\n\nclass GrayscaleFilter(Node):\n    def __init__(self):\n        super().__init__('grayscale_filter')\n        self.bridge = CvBridge()\n        # TODO: create a publisher of sensor_msgs/msg/Image on '/image_filtered'\n        # TODO: create a subscription to '/image_raw' calling self.on_image\n\n    def on_image(self, msg):\n        # TODO: convert msg to an OpenCV array (desired_encoding='bgr8')\n        # TODO: convert to grayscale with cv2.cvtColor(..., cv2.COLOR_BGR2GRAY)\n        # TODO: convert the grayscale array back to an Image with encoding='mono8'\n        # TODO: copy msg.header onto the output, then publish it\n        pass\n\n\ndef main(args=None):\n    rclpy.init(args=args)\n    node = GrayscaleFilter()\n    try:\n        rclpy.spin(node)\n    except KeyboardInterrupt:\n        pass\n    finally:\n        node.destroy_node()\n        rclpy.shutdown()\n\n\nif __name__ == '__main__':\n    main()\n",
+      "solutionCode": "import rclpy\nfrom rclpy.node import Node\nfrom sensor_msgs.msg import Image\nfrom cv_bridge import CvBridge\nimport cv2\n\n\nclass GrayscaleFilter(Node):\n    def __init__(self):\n        super().__init__('grayscale_filter')\n        self.bridge = CvBridge()\n        self.pub = self.create_publisher(Image, '/image_filtered', 10)\n        self.sub = self.create_subscription(\n            Image, '/image_raw', self.on_image, 10)\n\n    def on_image(self, msg):\n        cv_img = self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')\n        gray = cv2.cvtColor(cv_img, cv2.COLOR_BGR2GRAY)\n        out_msg = self.bridge.cv2_to_imgmsg(gray, encoding='mono8')\n        out_msg.header = msg.header\n        self.pub.publish(out_msg)\n\n\ndef main(args=None):\n    rclpy.init(args=args)\n    node = GrayscaleFilter()\n    try:\n        rclpy.spin(node)\n    except KeyboardInterrupt:\n        pass\n    finally:\n        node.destroy_node()\n        rclpy.shutdown()\n\n\nif __name__ == '__main__':\n    main()\n",
+      "supportFiles": {}
+    },
+    "verification": {
+      "strategy": "composite",
+      "humanDescription": "Passed when the node subscribes to '/image_raw', and for a known color test image republishes a single-channel 'mono8' image on '/image_filtered' whose dimensions match the input and whose center pixel equals the grayscale of the planted color, with the original header timestamp preserved.",
+      "checks": [
+        {
+          "kind": "node_exists",
+          "description": "A node named 'grayscale_filter' is present on the ROS graph.",
+          "params": { "node_name": "grayscale_filter" }
+        },
+        {
+          "kind": "topic_msg_type",
+          "description": "'/image_filtered' publishes sensor_msgs/msg/Image.",
+          "params": { "topic": "/image_filtered", "msg_type": "sensor_msgs/msg/Image" }
+        },
+        {
+          "kind": "image_republished",
+          "description": "Output is a mono8 image with the same height/width as the input.",
+          "params": { "topic": "/image_filtered", "expected_encoding": "mono8", "expected_height": 48, "expected_width": 64 }
+        },
+        {
+          "kind": "numeric_close",
+          "description": "Center pixel of output equals grayscale of the planted color within tolerance.",
+          "params": { "expected": 150, "tolerance": 2, "value_source": "output_image_center_pixel" }
+        }
+      ],
+      "timeoutSeconds": 20,
+      "harnessNotes": "The harness initializes rclpy and publishes one sensor_msgs/msg/Image on '/image_raw' built from a NumPy array of shape (48, 64, 3), dtype uint8, encoding 'bgr8', where every pixel is BGR = (100, 150, 200) (so B=100, G=150, R=200). It sets header.stamp to a sentinel value (sec=42, nanosec=7) and header.frame_id='camera_color_optical_frame'. It subscribes to '/image_filtered' and asserts: (1) a message arrives within the timeout; (2) msg.encoding == 'mono8'; (3) msg.height == 48 and msg.width == 64; (4) the center pixel at (row=24, col=32) decoded via cv_bridge equals round(0.299*200 + 0.587*150 + 0.114*100) which OpenCV COLOR_BGR2GRAY computes as 150 (+/- 2 for rounding); (5) msg.header.stamp.sec == 42 and msg.header.stamp.nanosec == 7, confirming the header was copied. Node presence and topic type are checked via the ROS graph introspection API."
+    }
+  },
+  {
+    "id": "module-7",
+    "phase": 2,
+    "order": 7,
+    "title": "RGB-D Sensors & Depth Mapping",
+    "topic": "Reading metric depth from aligned RGB-D streams by decoding 16UC1 sensor_msgs/Image data and sampling per-pixel distance in millimeters.",
+    "estimatedMinutes": 40,
+    "learningObjectives": [
+      "Describe how an RGB-D sensor produces a depth image aligned with the color image.",
+      "Decode a 16UC1 depth image into a NumPy uint16 array and read the value at a chosen pixel.",
+      "Interpret a raw depth value as an absolute distance in millimeters (and convert to meters).",
+      "Locate the geometric center pixel of an arbitrary-resolution image as (height//2, width//2)."
+    ],
+    "lesson": {
+      "markdown": "# RGB-D Sensors & Depth Mapping\n\nA normal camera answers *what color is at pixel (x, y)?* An RGB-D sensor (RealSense, Azure Kinect, structured-light or stereo rigs) adds a second answer: *how far away is the surface at pixel (x, y)?* That second image is the **depth image**, and it turns flat 2D pixels into 3D spatial awareness.\n\n## What a depth image actually contains\n\nThe color stream you already know is `(H, W, 3)` of 8-bit values. A depth stream is `(H, W)` of **16-bit unsigned integers**, encoding `16UC1`:\n\n- **16** bits per pixel, **U**nsigned, **C**hannel count **1**.\n- Each value is a distance, almost always in **millimeters**.\n\nSo `depth[y, x] == 1500` means the nearest surface along that ray is **1500 mm = 1.5 m** away. A value of `0` is special: it means *no reading* (too close, too far, reflective, or occluded). Always treat `0` as \"unknown,\" not \"touching the lens.\"\n\n```text\ncolor pixel  (y, x) = [B, G, R]      8-bit x3\ndepth pixel  (y, x) = 1500           16-bit x1  -> 1500 mm\n```\n\n## \"Aligned\" / \"rect\" streams\n\nYou'll subscribe to topics like `/camera/depth/image_rect_raw`. The `rect` means *rectified*: lens distortion has been removed, so straight lines in the world are straight in the image. When the driver also publishes an **aligned** depth image, depth pixel `(y, x)` corresponds to the *same world point* as color pixel `(y, x)`. That alignment is what lets you ask \"how far is the red cup I detected at (320, 240)?\" by simply indexing the depth array at the same coordinates. (Under the hood this uses the camera intrinsics you met in 2D CV, but the driver has already done that work for you on a `_rect_` / aligned topic.)\n\n## Decoding depth with cv_bridge\n\nSame translator as last module, different encoding. The key is to request `'16UC1'` (or `'passthrough'`) so the bytes are interpreted as 16-bit, not silently truncated:\n\n```python\nfrom cv_bridge import CvBridge\nbridge = CvBridge()\n\ndepth = bridge.imgmsg_to_cv2(msg, desired_encoding='16UC1')\n# depth is a NumPy array, dtype == uint16, shape (H, W)\n```\n\nNow it is just NumPy. Reading a distance is plain indexing:\n\n```python\nh, w = depth.shape\ncy, cx = h // 2, w // 2          # geometric center pixel\ncenter_mm = int(depth[cy, cx])    # distance in millimeters\ncenter_m = center_mm / 1000.0     # convert to meters if you need SI\n```\n\n## Why `(height // 2, width // 2)`\n\nNumPy indexes `[row, col]`, i.e. `[y, x]`. The center row is `height // 2`, the center column is `width // 2`. Integer division handles both even and odd resolutions cleanly. For a 480x640 image that is `depth[240, 320]`. Getting the order backwards (`[w//2, h//2]`) is a classic bug that only bites on non-square images.\n\n## Putting it together\n\n```python\ndef on_depth(self, msg):\n    depth = self.bridge.imgmsg_to_cv2(msg, desired_encoding='16UC1')\n    h, w = depth.shape\n    center_mm = int(depth[h // 2, w // 2])\n    self.get_logger().info(f'Center distance: {center_mm} mm')\n```\n\n## Mental model\n\nA depth image is a grayscale image where the pixel value *is the distance* instead of brightness. Decode it as 16-bit, index the center with `[h//2, w//2]`, and you have a metric measurement straight out of the same NumPy world you already live in. Just remember the units are millimeters and `0` means \"no data.\""
+    },
+    "exercise": {
+      "prompt": "Complete a node that subscribes to '/camera/depth/image_rect_raw' (sensor_msgs/msg/Image, encoding '16UC1'). On each frame, decode it with cv_bridge to a uint16 NumPy array, read the value at the exact center pixel (height//2, width//2), and print exactly 'Center distance: <N> mm' where <N> is the integer millimeter value at that pixel.",
+      "type": "python",
+      "editorLanguage": "python",
+      "starterCode": "import rclpy\nfrom rclpy.node import Node\nfrom sensor_msgs.msg import Image\nfrom cv_bridge import CvBridge\n\n\nclass DepthCenterReader(Node):\n    def __init__(self):\n        super().__init__('depth_center_reader')\n        self.bridge = CvBridge()\n        # TODO: subscribe to '/camera/depth/image_rect_raw' calling self.on_depth\n\n    def on_depth(self, msg):\n        # TODO: decode msg to a uint16 NumPy array (desired_encoding='16UC1')\n        # TODO: compute the center pixel as (height // 2, width // 2)\n        # TODO: read the integer mm value there\n        # TODO: print exactly 'Center distance: <N> mm'\n        pass\n\n\ndef main(args=None):\n    rclpy.init(args=args)\n    node = DepthCenterReader()\n    try:\n        rclpy.spin(node)\n    except KeyboardInterrupt:\n        pass\n    finally:\n        node.destroy_node()\n        rclpy.shutdown()\n\n\nif __name__ == '__main__':\n    main()\n",
+      "solutionCode": "import rclpy\nfrom rclpy.node import Node\nfrom sensor_msgs.msg import Image\nfrom cv_bridge import CvBridge\n\n\nclass DepthCenterReader(Node):\n    def __init__(self):\n        super().__init__('depth_center_reader')\n        self.bridge = CvBridge()\n        self.sub = self.create_subscription(\n            Image, '/camera/depth/image_rect_raw', self.on_depth, 10)\n\n    def on_depth(self, msg):\n        depth = self.bridge.imgmsg_to_cv2(msg, desired_encoding='16UC1')\n        h, w = depth.shape\n        center_mm = int(depth[h // 2, w // 2])\n        print(f'Center distance: {center_mm} mm', flush=True)\n        self.get_logger().info(f'Center distance: {center_mm} mm')\n\n\ndef main(args=None):\n    rclpy.init(args=args)\n    node = DepthCenterReader()\n    try:\n        rclpy.spin(node)\n    except KeyboardInterrupt:\n        pass\n    finally:\n        node.destroy_node()\n        rclpy.shutdown()\n\n\nif __name__ == '__main__':\n    main()\n",
+      "supportFiles": {}
+    },
+    "verification": {
+      "strategy": "composite",
+      "humanDescription": "Passed when the node subscribes to the depth topic and, for a synthetic 16UC1 depth image with a known center value, prints 'Center distance: 1500 mm' (the planted center distance in millimeters).",
+      "checks": [
+        {
+          "kind": "node_exists",
+          "description": "A node named 'depth_center_reader' is present on the ROS graph.",
+          "params": { "node_name": "depth_center_reader" }
+        },
+        {
+          "kind": "stdout_regex",
+          "description": "Stdout reports the center distance in mm as an integer with the exact format.",
+          "params": { "pattern": "^Center distance: 1500 mm$", "multiline": true }
+        }
+      ],
+      "timeoutSeconds": 20,
+      "harnessNotes": "The harness publishes one sensor_msgs/msg/Image on '/camera/depth/image_rect_raw' built from a NumPy array of shape (480, 640), dtype uint16, encoding '16UC1'. The whole array is filled with 800 EXCEPT the exact center pixel at (row=240, col=320) which is set to 1500. This makes the center value unambiguous: a solution that reads the correct center pixel reports 1500, while a transposed index (col//2, row//2) would also be 1500 here, so a second background pixel at (row=10, col=10)=999 plus the distinct fill value 800 ensures only reading [h//2, w//2] yields 1500 (a solution that, e.g., reports the array max would print 1500 too, so the harness ALSO runs a second trial where center=1200 and max=4000 elsewhere, requiring the printed value to track the center, not the max). The harness captures the node's stdout and asserts a line matching '^Center distance: 1500 mm$' appears for trial 1 (and '^Center distance: 1200 mm$' for trial 2). The integer must be exact; no decimal point, no meters."
+    }
+  },
+  {
+    "id": "module-8",
+    "phase": 2,
+    "order": 8,
+    "title": "3D Reconstruction & Point Clouds",
+    "topic": "Parsing sensor_msgs/msg/PointCloud2 with sensor_msgs_py.point_cloud2 to extract x,y,z points and filter geometry by Euclidean distance for spatial mapping.",
+    "estimatedMinutes": 45,
+    "learningObjectives": [
+      "Explain how a PointCloud2 packs an unordered set of 3D points into a binary buffer described by fields.",
+      "Iterate x,y,z values using sensor_msgs_py.point_cloud2.read_points with field_names and skip_nans.",
+      "Compute the Euclidean distance of each point from the sensor origin.",
+      "Filter points by a metric threshold (1.5 m) and report the count of points that remain."
+    ],
+    "lesson": {
+      "markdown": "# 3D Reconstruction & Point Clouds\n\nA depth image gave you one distance per pixel on a regular grid. A **point cloud** drops the grid entirely and gives you a bag of explicit 3D coordinates: `(x, y, z)` in meters, in the sensor's frame. This is the native format for 3D reconstruction, obstacle detection, and mapping. ROS 2 carries it as `sensor_msgs/msg/PointCloud2`.\n\n## Why PointCloud2 looks intimidating (and isn't)\n\nOpen the message and you see `height`, `width`, `fields`, `point_step`, `row_step`, and a giant `data` byte buffer. It feels lower-level than an image, and it is, on purpose: a cloud may carry x/y/z plus intensity, RGB, normals, ring index... so instead of a fixed layout it ships a **self-describing** buffer. The `fields` list says \"there is a float32 named 'x' at byte offset 0, 'y' at offset 4, 'z' at offset 8...\" and `point_step` says how many bytes one full point occupies.\n\n```text\nfields:  [x@0 f32, y@4 f32, z@8 f32, ...]\npoint_step: 16          # bytes per point\ndata:  <raw bytes for N points back to back>\n```\n\nYou could decode that by hand with `struct`. Don't. ROS 2 ships a helper that reads the `fields` metadata for you.\n\n## sensor_msgs_py.point_cloud2.read_points\n\nThis is the canonical reader. You tell it which fields you want and it yields them point by point:\n\n```python\nfrom sensor_msgs_py import point_cloud2\n\nfor x, y, z in point_cloud2.read_points(\n        msg,\n        field_names=('x', 'y', 'z'),\n        skip_nans=True):\n    ...\n```\n\nTwo arguments matter:\n\n- `field_names=('x', 'y', 'z')` -> only pull those three fields, in that order, regardless of what else the cloud carries.\n- `skip_nans=True` -> silently drop points whose value is NaN. Real sensors emit NaN for invalid returns; if you don't skip them, your math becomes NaN and your filters misbehave.\n\nEach iteration gives you three plain floats in **meters** (the SI convention for clouds, unlike depth images which were millimeters, watch that unit switch).\n\n## Filtering by distance\n\nDistance from the sensor origin is the ordinary Euclidean norm:\n\n```python\nimport math\ndist = math.sqrt(x * x + y * y + z * z)\n```\n\nTo keep only nearby structure, count the points within 1.5 m:\n\n```python\nnear = 0\nfor x, y, z in point_cloud2.read_points(\n        msg, field_names=('x', 'y', 'z'), skip_nans=True):\n    if math.sqrt(x * x + y * y + z * z) <= 1.5:\n        near += 1\nself.get_logger().info(f'Points within 1.5 m: {near}')\n```\n\nThis \"throw away anything beyond a threshold\" step is the foundation of obstacle filtering: keep the close stuff that might be a collision, discard the far walls.\n\n## A note on read_points return types\n\nDepending on your ROS 2 version, `read_points` may yield tuples or a structured NumPy element. Unpacking `for x, y, z in ...` works in both Humble and Jazzy when you pass `field_names=('x','y','z')`. If you ever need an array, `read_points_numpy` exists too, but for counting, the iterator is cleanest.\n\n## Mental model\n\nA PointCloud2 is a self-describing list of 3D points. `read_points(..., field_names=('x','y','z'), skip_nans=True)` is the can-opener: it hands you clean `(x, y, z)` floats in meters. From there it's plain geometry, Euclidean distance and a threshold, no message internals required."
+    },
+    "exercise": {
+      "prompt": "Complete a node that subscribes to '/points' (sensor_msgs/msg/PointCloud2). For each cloud, use sensor_msgs_py.point_cloud2.read_points with field_names=('x','y','z') and skip_nans=True, compute each point's Euclidean distance from the origin, and count the points within 1.5 meters. Print exactly 'Points within 1.5 m: <N>'.",
+      "type": "python",
+      "editorLanguage": "python",
+      "starterCode": "import math\n\nimport rclpy\nfrom rclpy.node import Node\nfrom sensor_msgs.msg import PointCloud2\nfrom sensor_msgs_py import point_cloud2\n\n\nclass NearPointCounter(Node):\n    def __init__(self):\n        super().__init__('near_point_counter')\n        self.threshold = 1.5\n        # TODO: subscribe to '/points' calling self.on_cloud\n\n    def on_cloud(self, msg):\n        # TODO: iterate read_points(msg, field_names=('x','y','z'), skip_nans=True)\n        # TODO: count points whose sqrt(x*x + y*y + z*z) <= self.threshold\n        # TODO: print exactly 'Points within 1.5 m: <N>'\n        pass\n\n\ndef main(args=None):\n    rclpy.init(args=args)\n    node = NearPointCounter()\n    try:\n        rclpy.spin(node)\n    except KeyboardInterrupt:\n        pass\n    finally:\n        node.destroy_node()\n        rclpy.shutdown()\n\n\nif __name__ == '__main__':\n    main()\n",
+      "solutionCode": "import math\n\nimport rclpy\nfrom rclpy.node import Node\nfrom sensor_msgs.msg import PointCloud2\nfrom sensor_msgs_py import point_cloud2\n\n\nclass NearPointCounter(Node):\n    def __init__(self):\n        super().__init__('near_point_counter')\n        self.threshold = 1.5\n        self.sub = self.create_subscription(\n            PointCloud2, '/points', self.on_cloud, 10)\n\n    def on_cloud(self, msg):\n        near = 0\n        for x, y, z in point_cloud2.read_points(\n                msg, field_names=('x', 'y', 'z'), skip_nans=True):\n            if math.sqrt(float(x) * float(x) + float(y) * float(y) + float(z) * float(z)) <= self.threshold:\n                near += 1\n        print(f'Points within 1.5 m: {near}', flush=True)\n        self.get_logger().info(f'Points within 1.5 m: {near}')\n\n\ndef main(args=None):\n    rclpy.init(args=args)\n    node = NearPointCounter()\n    try:\n        rclpy.spin(node)\n    except KeyboardInterrupt:\n        pass\n    finally:\n        node.destroy_node()\n        rclpy.shutdown()\n\n\nif __name__ == '__main__':\n    main()\n",
+      "supportFiles": {}
+    },
+    "verification": {
+      "strategy": "composite",
+      "humanDescription": "Passed when the node subscribes to '/points' and, for a synthetic PointCloud2 with a known mix of near, far, and NaN points, prints 'Points within 1.5 m: 3' (the exact count of points within the 1.5 m threshold).",
+      "checks": [
+        {
+          "kind": "node_exists",
+          "description": "A node named 'near_point_counter' is present on the ROS graph.",
+          "params": { "node_name": "near_point_counter" }
+        },
+        {
+          "kind": "stdout_regex",
+          "description": "Stdout reports the exact count of points within 1.5 m.",
+          "params": { "pattern": "^Points within 1\\.5 m: 3$", "multiline": true }
+        }
+      ],
+      "timeoutSeconds": 20,
+      "harnessNotes": "The harness builds one sensor_msgs/msg/PointCloud2 with point_cloud2.create_cloud_xyz32 from exactly 6 float32 (x,y,z) points: P1=(1.0,0.0,0.0) dist 1.0 NEAR; P2=(0.0,0.0,1.4) dist 1.4 NEAR; P3=(0.8,0.8,0.8) dist 1.3856 NEAR; P4=(1.0,1.0,1.0) dist 1.7320 FAR; P5=(3.0,0.0,0.0) dist 3.0 FAR; P6=(nan,nan,nan) which skip_nans must drop. The boundary is exclusive of P4 (1.732 > 1.5). Ground-truth count within <=1.5 m is exactly 3 (P1,P2,P3). The harness publishes this cloud on '/points', captures the node's stdout, and asserts a line matching '^Points within 1\\.5 m: 3$' appears. Because P3 (1.3856) is close to the threshold and P4 (1.732) is just over, an off-by-one in the comparison or failure to skip NaNs produces a different count, so the value 3 uniquely identifies a correct solution. Node presence is verified via graph introspection."
+    }
+  },
+  {
+    "id": "module-9",
+    "phase": 2,
+    "order": 9,
+    "title": "Pose Estimation",
+    "topic": "Turning a perception result into a ROS 2 spatial estimate by publishing a geometry_msgs/msg/PoseStamped with position and a normalized quaternion orientation.",
+    "estimatedMinutes": 45,
+    "learningObjectives": [
+      "Explain what a geometry_msgs/msg/PoseStamped represents: a frame-stamped position plus an orientation quaternion.",
+      "Map a vision computation (feature extraction) onto a 6-DOF pose estimate.",
+      "Populate and publish a PoseStamped with a correct header (stamp + frame_id) and a normalized identity quaternion.",
+      "Wire an image-in / pose-out perception node following the standard subscribe-process-publish pattern."
+    ],
+    "lesson": {
+      "markdown": "# Pose Estimation\n\nThe last three modules turned pixels into measurements. This one turns measurements into a **pose**, the bridge from \"what the camera saw\" to \"where things are in space.\" When a visual algorithm (PnP, marker detection, visual odometry, a learned model) decides where the camera or an object is, ROS 2 expects that answer as a `geometry_msgs/msg/PoseStamped`.\n\n## What a PoseStamped is\n\nA pose is two things: **position** (where) and **orientation** (which way it's facing). `PoseStamped` wraps both with a header so consumers know *when* and *in which frame*:\n\n```text\nheader:\n  stamp     -> when this estimate is valid\n  frame_id  -> the reference frame (e.g. 'map', 'camera_link')\npose:\n  position    -> x, y, z   (meters)\n  orientation -> x, y, z, w (a quaternion)\n```\n\nPosition is intuitive: three meters in a frame. Orientation is a **quaternion** `(x, y, z, w)`, not Euler angles. You don't need the math here, just two facts:\n\n1. The \"no rotation\" / identity orientation is `(x=0, y=0, z=0, w=1)`. Use that when you only have a position to report.\n2. A quaternion **must be normalized** (`x^2 + y^2 + z^2 + w^2 == 1`). The identity already is. If you ever leave all four at `0`, downstream TF and RViz reject it as invalid, that's the single most common PoseStamped mistake.\n\nWhy quaternions instead of roll/pitch/yaw? They avoid gimbal lock and interpolate smoothly. ROS uses them everywhere, so producing one correctly is the skill that matters.\n\n## From image to pose\n\nA real estimator runs features through geometry. The shape of the node, though, is identical to your filter node from Module 6: subscribe to an image, compute something, publish the result, only now the output message is a `PoseStamped` instead of an `Image`.\n\n```python\nfrom geometry_msgs.msg import PoseStamped\n\nclass PoseEstimator(Node):\n    def __init__(self):\n        super().__init__('pose_estimator')\n        self.pub = self.create_publisher(PoseStamped, '/estimated_pose', 10)\n        self.sub = self.create_subscription(\n            Image, '/image_raw', self.on_image, 10)\n\n    def on_image(self, msg):\n        # stand-in for real feature extraction / PnP\n        x, y, z = self.estimate_position(msg)\n\n        out = PoseStamped()\n        out.header.stamp = msg.header.stamp        # reuse image time\n        out.header.frame_id = 'camera_link'\n        out.pose.position.x = x\n        out.pose.position.y = y\n        out.pose.position.z = z\n        out.pose.orientation.x = 0.0\n        out.pose.orientation.y = 0.0\n        out.pose.orientation.z = 0.0\n        out.pose.orientation.w = 1.0               # identity, normalized\n        self.pub.publish(out)\n```\n\nNotice the header timestamp comes from the *input image*, not `now()`. The pose describes the world *as the image saw it*; stamping it with the image time keeps the estimate aligned with the data it came from.\n\n## The simulated feature extraction\n\nReal feature extraction is a module of its own. To practice the ROS plumbing in isolation, we *simulate* it with a deterministic computation, here, derive a position from the image dimensions so the output is predictable:\n\n```python\ndef estimate_position(self, msg):\n    # deterministic stand-in: scale image size into meters\n    x = msg.width / 1000.0\n    y = msg.height / 1000.0\n    z = 1.0\n    return x, y, z\n```\n\nThis isn't real geometry; it's a placeholder that lets the grader verify you built and published the PoseStamped correctly. In production you'd swap this for `cv2.solvePnP` or a deep pose network, but the message-building code around it stays exactly the same.\n\n## Mental model\n\nPose estimation, from ROS's side, is \"do a CV computation, then pack the answer into a PoseStamped with a real header and a normalized quaternion.\" Get the identity quaternion `(0,0,0,1)` and the frame_id right, reuse the image timestamp, and your perception result is now first-class spatial data the rest of the robot can consume."
+    },
+    "exercise": {
+      "prompt": "Complete a node that subscribes to '/image_raw' (sensor_msgs/msg/Image) and publishes a geometry_msgs/msg/PoseStamped on '/estimated_pose'. Simulate feature extraction by setting position x = msg.width/1000.0, y = msg.height/1000.0, z = 1.0. Set orientation to the identity quaternion (0,0,0,1), frame_id to 'camera_link', and reuse the incoming image's header stamp.",
+      "type": "python",
+      "editorLanguage": "python",
+      "starterCode": "import rclpy\nfrom rclpy.node import Node\nfrom sensor_msgs.msg import Image\nfrom geometry_msgs.msg import PoseStamped\n\n\nclass PoseEstimator(Node):\n    def __init__(self):\n        super().__init__('pose_estimator')\n        # TODO: create a publisher of PoseStamped on '/estimated_pose'\n        # TODO: subscribe to '/image_raw' calling self.on_image\n\n    def on_image(self, msg):\n        # TODO: build a PoseStamped\n        # TODO: header.stamp = msg.header.stamp; header.frame_id = 'camera_link'\n        # TODO: position x=msg.width/1000.0, y=msg.height/1000.0, z=1.0\n        # TODO: orientation = identity quaternion (0,0,0,1)\n        # TODO: publish it\n        pass\n\n\ndef main(args=None):\n    rclpy.init(args=args)\n    node = PoseEstimator()\n    try:\n        rclpy.spin(node)\n    except KeyboardInterrupt:\n        pass\n    finally:\n        node.destroy_node()\n        rclpy.shutdown()\n\n\nif __name__ == '__main__':\n    main()\n",
+      "solutionCode": "import rclpy\nfrom rclpy.node import Node\nfrom sensor_msgs.msg import Image\nfrom geometry_msgs.msg import PoseStamped\n\n\nclass PoseEstimator(Node):\n    def __init__(self):\n        super().__init__('pose_estimator')\n        self.pub = self.create_publisher(PoseStamped, '/estimated_pose', 10)\n        self.sub = self.create_subscription(\n            Image, '/image_raw', self.on_image, 10)\n\n    def on_image(self, msg):\n        out = PoseStamped()\n        out.header.stamp = msg.header.stamp\n        out.header.frame_id = 'camera_link'\n        out.pose.position.x = msg.width / 1000.0\n        out.pose.position.y = msg.height / 1000.0\n        out.pose.position.z = 1.0\n        out.pose.orientation.x = 0.0\n        out.pose.orientation.y = 0.0\n        out.pose.orientation.z = 0.0\n        out.pose.orientation.w = 1.0\n        self.pub.publish(out)\n\n\ndef main(args=None):\n    rclpy.init(args=args)\n    node = PoseEstimator()\n    try:\n        rclpy.spin(node)\n    except KeyboardInterrupt:\n        pass\n    finally:\n        node.destroy_node()\n        rclpy.shutdown()\n\n\nif __name__ == '__main__':\n    main()\n",
+      "supportFiles": {}
+    },
+    "verification": {
+      "strategy": "composite",
+      "humanDescription": "Passed when the node subscribes to '/image_raw' and publishes a geometry_msgs/msg/PoseStamped on '/estimated_pose' whose position is derived from the planted image dimensions, whose orientation is the identity quaternion, and whose header stamp matches the input image.",
+      "checks": [
+        {
+          "kind": "node_exists",
+          "description": "A node named 'pose_estimator' is present on the ROS graph.",
+          "params": { "node_name": "pose_estimator" }
+        },
+        {
+          "kind": "topic_msg_type",
+          "description": "'/estimated_pose' publishes geometry_msgs/msg/PoseStamped.",
+          "params": { "topic": "/estimated_pose", "msg_type": "geometry_msgs/msg/PoseStamped" }
+        },
+        {
+          "kind": "numeric_close",
+          "description": "Pose position x equals image width/1000.",
+          "params": { "field": "pose.position.x", "expected": 0.64, "tolerance": 0.0001 }
+        },
+        {
+          "kind": "numeric_close",
+          "description": "Pose position y equals image height/1000.",
+          "params": { "field": "pose.position.y", "expected": 0.48, "tolerance": 0.0001 }
+        },
+        {
+          "kind": "numeric_close",
+          "description": "Pose position z equals 1.0.",
+          "params": { "field": "pose.position.z", "expected": 1.0, "tolerance": 0.0001 }
+        },
+        {
+          "kind": "numeric_close",
+          "description": "Orientation is the identity quaternion (w = 1).",
+          "params": { "field": "pose.orientation.w", "expected": 1.0, "tolerance": 0.0001 }
+        }
+      ],
+      "timeoutSeconds": 20,
+      "harnessNotes": "The harness publishes one sensor_msgs/msg/Image on '/image_raw' with width=640, height=480, encoding='bgr8', header.stamp set to a sentinel (sec=99, nanosec=5) and header.frame_id='camera_color_optical_frame'. It subscribes to '/estimated_pose' and asserts a geometry_msgs/msg/PoseStamped arrives within the timeout with: pose.position.x == 0.64 (640/1000), pose.position.y == 0.48 (480/1000), pose.position.z == 1.0 (all +/- 1e-4); orientation exactly (x=0.0, y=0.0, z=0.0, w=1.0) and normalized (x^2+y^2+z^2+w^2 == 1 within 1e-6); header.frame_id == 'camera_link'; and header.stamp.sec == 99 and header.stamp.nanosec == 5 confirming the image stamp was reused. Node presence and topic type are checked via the ROS graph introspection API."
+    }
+  }
+]
