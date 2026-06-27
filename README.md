@@ -38,22 +38,27 @@ Every exercise is graded by injecting synthetic sensor data with **known
 ground truth** and asserting the student's output exactly (see each module's
 `verification.harnessNotes`).
 
-## Run it locally
+## Run it locally — one step
 
-Full build/grade instructions are in [`docs/RUNNING.md`](docs/RUNNING.md). Quick version:
+From the repo root:
 
 ```bash
-# 1. build the ROS 2 sandbox image (used to run/grade every submission)
-cd backend/sandbox_image && make build          # ros2-3dcv-sandbox:humble
-
-# 2. grade a solution against the real container (no web app needed)
-python3 grade.py module-8                        # reference solution
-python3 grade.py module-8 ~/my_attempt.py        # your own file
-make grade-all                                   # every module end-to-end
-
-# 3. (optional) run the whole web app
-cd ../.. && docker compose up --build            # web :5173, api :8000
+make start
 ```
+
+That's it. It builds the ROS 2 sandbox image (once — a few GB), builds the
+api/web images, and starts everything. Open **http://localhost:5173**.
+(First run is slow because it downloads ROS 2; later runs are fast.)
+
+Other commands: `make stop`, `make logs`, `make rebuild` (force-rebuild images).
+
+Grade a solution without the web app:
+```bash
+make grade MODULE=module-8                       # reference solution
+make grade MODULE=module-8 SOLUTION=~/attempt.py # your own file
+```
+
+Full details and a host-mode alternative are in [`docs/RUNNING.md`](docs/RUNNING.md).
 
 > The curriculum content is complete and production-ready. The Docker grading
 > stack (`backend/sandbox_image/`) is fully implemented — one driver per module

@@ -4,7 +4,8 @@ FROM python:3.11-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
       docker.io \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && docker --version   # fail the build early if the docker CLI is missing
 
 WORKDIR /app
 COPY requirements.txt .
