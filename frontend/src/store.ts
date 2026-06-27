@@ -25,3 +25,21 @@ export const useProgress = create<ProgressState>()(
     { name: "ros2-3dcv-progress" }
   )
 );
+
+export type Theme = "light" | "dark";
+
+interface ThemeState {
+  theme: Theme;
+  toggle: () => void;
+}
+
+// Theme preference, persisted across sessions. Defaults to light.
+export const useTheme = create<ThemeState>()(
+  persist(
+    (set, get) => ({
+      theme: "light",
+      toggle: () => set({ theme: get().theme === "light" ? "dark" : "light" }),
+    }),
+    { name: "ros2-3dcv-theme" }
+  )
+);

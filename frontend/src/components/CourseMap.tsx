@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { fetchCurriculum, Module } from "../api";
 import { useProgress } from "../store";
+import { ThemeToggle } from "./ThemeToggle";
 
 const PHASE_TITLES: Record<number, string> = {
   1: "Phase 1 · Core ROS 2 Mechanics (rclpy)",
@@ -24,8 +25,11 @@ export function CourseMap() {
   return (
     <div className="course-map">
       <header>
-        <h1>3D Computer Vision + ROS 2</h1>
-        <p>Read the theory, then complete the exercise in the in-browser editor.</p>
+        <div>
+          <h1>3D Computer Vision + ROS 2</h1>
+          <p>Read the theory, then complete the exercise in the in-browser editor.</p>
+        </div>
+        <ThemeToggle />
       </header>
       {Object.keys(byPhase)
         .map(Number)

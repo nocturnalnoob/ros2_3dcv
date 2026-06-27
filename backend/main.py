@@ -14,6 +14,7 @@ swappable per distro.
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
@@ -23,7 +24,15 @@ from models import Module, RunRequest, SubmitRequest, Verdict
 from orchestrator import grade_submission, run_only
 from terminal_sim import Ros2CliEmulator
 
-CURRICULUM_PATH = Path(__file__).resolve().parent.parent / "curriculum" / "curriculum.json"
+# Default resolves curriculum/ as a sibling of backend/ (bare-metal layout).
+# In Docker the backend is copied to /app, so docker-compose sets
+# CURRICULUM_PATH=/app/curriculum/curriculum.json to match the mount.
+CURRICULUM_PATH = Path(
+    os.environ.get(
+        "CURRICULUM_PATH",
+        Path(__file__).resolve().parent.parent / "curriculum" / "curriculum.json",
+    )
+)
 
 app = FastAPI(title="ros2_3dcv", version="0.1.0")
 app.add_middleware(

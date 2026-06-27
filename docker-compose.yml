@@ -21,6 +21,7 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock  # spawn sandbox containers
     environment:
       - SANDBOX_DISTRO=humble
+      - CURRICULUM_PATH=/app/curriculum/curriculum.json
 
   web:
     build:
@@ -28,5 +29,12 @@ services:
       dockerfile: Dockerfile
     ports:
       - "5173:5173"
+    environment:
+      # Reach the API by its compose service name, not localhost.
+      - API_PROXY_TARGET=http://api:8000
+      - CHOKIDAR_USEPOLLING=true   # file-watching/HMR across the bind mount
+    volumes:
+      - ./frontend:/app          # live-edit source -> hot reload
+      - /app/node_modules        # keep the image's installed deps
     depends_on:
       - api

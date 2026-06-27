@@ -4,9 +4,10 @@ import { useQuery } from "@tanstack/react-query";
 import Editor from "@monaco-editor/react";
 import ReactMarkdown from "react-markdown";
 import { fetchCurriculum, runCode, submitCode, Module, Verdict } from "../api";
-import { useProgress } from "../store";
+import { useProgress, useTheme } from "../store";
 import { TerminalPane } from "./TerminalPane";
 import { VizPanel } from "./VizPanel";
+import { ThemeToggle } from "./ThemeToggle";
 
 type Tab = "editor" | "terminal" | "viz";
 
@@ -21,6 +22,7 @@ export function Workbench() {
 
 function WorkbenchInner({ module }: { module: Module }) {
   const { savedCode, saveCode, setStatus } = useProgress();
+  const theme = useTheme((s) => s.theme);
   const [code, setCode] = useState(savedCode[module.id] ?? module.exercise.starterCode);
   const [tab, setTab] = useState<Tab>(module.exercise.type === "terminal" ? "terminal" : "editor");
   const [verdict, setVerdict] = useState<Verdict | null>(null);
@@ -59,6 +61,7 @@ function WorkbenchInner({ module }: { module: Module }) {
           {module.exercise.type === "terminal" && <TabBtn t="terminal" tab={tab} set={setTab}>Terminal</TabBtn>}
           <TabBtn t="viz" tab={tab} set={setTab}>Visualization</TabBtn>
           <div className="spacer" />
+          <ThemeToggle />
           {module.exercise.type === "python" && (
             <>
               <button onClick={() => setCode(module.exercise.starterCode)}>Reset</button>
@@ -75,7 +78,7 @@ function WorkbenchInner({ module }: { module: Module }) {
             <Editor
               height="100%"
               language={module.exercise.editorLanguage}
-              theme="vs-dark"
+              theme={theme === "dark" ? "vs-dark" : "light"}
               value={code}
               onChange={(v) => setCode(v ?? "")}
               options={{ minimap: { enabled: false }, fontSize: 14 }}
