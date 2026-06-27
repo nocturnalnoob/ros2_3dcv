@@ -30,17 +30,51 @@
         {
           "kind": "stdout_contains",
           "description": "Confirms the logger emitted the required initialization message.",
-          "params": { "text": "System initialized" }
+          "params": {
+            "text": "System initialized"
+          }
         },
         {
           "kind": "node_exists",
           "description": "Confirms a node named 'system_node' joined the ROS 2 graph.",
-          "params": { "name": "system_node" }
+          "params": {
+            "name": "system_node"
+          }
         }
       ],
       "timeoutSeconds": 15,
       "harnessNotes": "The harness runs the student script as a subprocess inside the sandbox with a sourced ROS 2 environment. It captures both stdout and stderr (rcutils logging is emitted on stderr by default, so the harness merges the two streams before matching) and applies the stdout_contains check against the combined buffer. Concurrently, before the student script exits, the harness runs a sibling rclpy 'probe' node that calls get_node_names() in a short poll loop (up to ~5s) and asserts 'system_node' appears. Because the student uses spin_once, the harness slightly slows the probe by injecting a small startup barrier and may re-run with rclpy.spin for one short window if discovery is racy; both the log line and graph presence must be observed for a pass."
-    }
+    },
+    "quickReference": [
+      {
+        "api": "from rclpy.node import Node",
+        "what": "base class for every ROS 2 node"
+      },
+      {
+        "api": "rclpy.init(args=args)",
+        "what": "start the ROS 2 client library"
+      },
+      {
+        "api": "class SystemNode(Node): super().__init__('system_node')",
+        "what": "create a node by subclassing Node"
+      },
+      {
+        "api": "self.get_logger().info('System initialized')",
+        "what": "log a message through ROS"
+      },
+      {
+        "api": "rclpy.spin_once(node, timeout_sec=0.1)",
+        "what": "process callbacks once, briefly"
+      },
+      {
+        "api": "node.destroy_node()",
+        "what": "release the node's resources"
+      },
+      {
+        "api": "rclpy.shutdown()",
+        "what": "tear down the ROS context"
+      }
+    ]
   },
   {
     "id": "module-2",
@@ -73,27 +107,68 @@
         {
           "kind": "topic_published",
           "description": "Confirms messages are flowing on the 'chatter' topic.",
-          "params": { "topic": "chatter" }
+          "params": {
+            "topic": "chatter"
+          }
         },
         {
           "kind": "topic_msg_type",
           "description": "Confirms the topic carries std_msgs/msg/String.",
-          "params": { "topic": "chatter", "expected": "std_msgs/msg/String" }
+          "params": {
+            "topic": "chatter",
+            "expected": "std_msgs/msg/String"
+          }
         },
         {
           "kind": "rate_approx",
           "description": "Confirms the publish rate is approximately 2 Hz.",
-          "params": { "topic": "chatter", "hz": 2.0, "tolerance": 0.4 }
+          "params": {
+            "topic": "chatter",
+            "hz": 2.0,
+            "tolerance": 0.4
+          }
         },
         {
           "kind": "stdout_contains",
           "description": "Confirms the subscriber callback ran and logged a received message.",
-          "params": { "text": "I heard:" }
+          "params": {
+            "text": "I heard:"
+          }
         }
       ],
       "timeoutSeconds": 15,
       "harnessNotes": "Because the student script blocks on executor.spin(), the harness launches it as a subprocess and runs for a bounded window (about 6 seconds) before sending SIGINT to break the spin via the KeyboardInterrupt path. While it runs, the harness spawns a sibling rclpy 'probe' node that creates its own subscription to 'chatter' (matching std_msgs/msg/String, depth 10), counts the messages it receives, and timestamps them. It computes the empirical rate as (count-1)/(last_ts-first_ts) and asserts it falls within 2.0 +/- 0.4 Hz; it reads the publisher's declared type via get_topic_names_and_types() to satisfy the type check. The merged stdout/stderr buffer is scanned for 'I heard:' to prove the student's own subscriber callback fired. All four checks must pass."
-    }
+    },
+    "quickReference": [
+      {
+        "api": "from std_msgs.msg import String",
+        "what": "the text message type"
+      },
+      {
+        "api": "from rclpy.executors import MultiThreadedExecutor",
+        "what": "run several nodes together"
+      },
+      {
+        "api": "self.create_publisher(String, 'chatter', 10)",
+        "what": "publish String on a topic, depth 10"
+      },
+      {
+        "api": "self.create_timer(0.5, self.tick)",
+        "what": "fire a callback every 0.5s (2 Hz)"
+      },
+      {
+        "api": "self.pub.publish(msg)  # msg.data = '...'",
+        "what": "send a message onto the topic"
+      },
+      {
+        "api": "self.create_subscription(String, 'chatter', self.on_msg, 10)",
+        "what": "receive messages via a callback"
+      },
+      {
+        "api": "executor.add_node(node); executor.spin()",
+        "what": "add nodes and run them together"
+      }
+    ]
   },
   {
     "id": "module-3",
@@ -126,22 +201,58 @@
         {
           "kind": "service_available",
           "description": "Confirms the 'add_two_ints' service is advertised with the AddTwoInts type.",
-          "params": { "service": "add_two_ints", "expected": "example_interfaces/srv/AddTwoInts" }
+          "params": {
+            "service": "add_two_ints",
+            "expected": "example_interfaces/srv/AddTwoInts"
+          }
         },
         {
           "kind": "introspection",
           "description": "Confirms the server returns the correct sum for injected inputs.",
-          "params": { "service": "add_two_ints", "a": 41, "b": 1, "expected_sum": 42 }
+          "params": {
+            "service": "add_two_ints",
+            "a": 41,
+            "b": 1,
+            "expected_sum": 42
+          }
         },
         {
           "kind": "stdout_contains",
           "description": "Confirms the server callback executed and logged the operation.",
-          "params": { "text": "sum=42" }
+          "params": {
+            "text": "sum=42"
+          }
         }
       ],
       "timeoutSeconds": 15,
       "harnessNotes": "The student script blocks on rclpy.spin(), so the harness runs it as a subprocess and lets it advertise the service. The harness then spawns a sibling rclpy 'probe' client node that calls create_client(AddTwoInts, 'add_two_ints'), waits up to ~5s with wait_for_service(), and verifies via get_service_names_and_types() that the type is example_interfaces/srv/AddTwoInts. It builds AddTwoInts.Request(a=41, b=1), calls call_async, and uses spin_until_future_complete to retrieve the result, asserting future.result().sum == 42. It also injects a second pair (a=10, b=20) and checks sum==30 to guard against hardcoding. The merged stdout/stderr is scanned for 'sum=42' to confirm the student's own logging ran. After probing, the harness sends SIGINT to stop the server. All checks must pass."
-    }
+    },
+    "quickReference": [
+      {
+        "api": "from example_interfaces.srv import AddTwoInts",
+        "what": "the request/response service type"
+      },
+      {
+        "api": "self.create_service(AddTwoInts, 'add_two_ints', self.handle)",
+        "what": "advertise a service with a callback"
+      },
+      {
+        "api": "def handle(self, request, response):",
+        "what": "callback signature is (request, response)"
+      },
+      {
+        "api": "response.sum = request.a + request.b",
+        "what": "fill in the response fields"
+      },
+      {
+        "api": "return response",
+        "what": "must return response (top bug if omitted)"
+      },
+      {
+        "api": "rclpy.spin(node)",
+        "what": "keep the server available to clients"
+      }
+    ]
   },
   {
     "id": "module-4",
@@ -174,22 +285,67 @@
         {
           "kind": "callback_invoked",
           "description": "Confirms the action server received a goal from the student client.",
-          "params": { "action": "fibonacci", "event": "goal_received" }
+          "params": {
+            "action": "fibonacci",
+            "event": "goal_received"
+          }
         },
         {
           "kind": "stdout_regex",
           "description": "Confirms the client logged at least one feedback message.",
-          "params": { "pattern": "Feedback: \\[.*\\]" }
+          "params": {
+            "pattern": "Feedback: \\[.*\\]"
+          }
         },
         {
           "kind": "stdout_contains",
           "description": "Confirms the client logged the correct final Fibonacci result for order=10.",
-          "params": { "text": "Result: [0, 1, 1, 2, 3, 5, 8, 13, 21, 34, 55]" }
+          "params": {
+            "text": "Result: [0, 1, 1, 2, 3, 5, 8, 13, 21, 34, 55]"
+          }
         }
       ],
       "timeoutSeconds": 15,
       "harnessNotes": "The harness first launches its own Fibonacci action server (a sibling rclpy node implementing action_tutorials_interfaces/action/Fibonacci on action name 'fibonacci'). The server accepts the goal, computes the sequence incrementally, and publishes a feedback message with partial_sequence after each step (with a short sleep, e.g. 0.3s, so multiple feedback messages are emitted), then returns the full sequence as the result. It records that a goal was received to satisfy the callback_invoked check. The harness then runs the student script as a subprocess; the student client connects, sends order=10, and its callbacks fire. The merged stdout/stderr is scanned for a 'Feedback: [...]' line (regex) proving feedback was handled, and for the exact result line for order=10, which is [0, 1, 1, 2, 3, 5, 8, 13, 21, 34, 55]. The harness bounds the run to the timeout and SIGINTs both processes afterward. All three checks must pass."
-    }
+    },
+    "quickReference": [
+      {
+        "api": "from rclpy.action import ActionClient",
+        "what": "client for long-running action tasks"
+      },
+      {
+        "api": "from action_tutorials_interfaces.action import Fibonacci",
+        "what": "the Fibonacci goal/feedback/result type"
+      },
+      {
+        "api": "ActionClient(self, Fibonacci, 'fibonacci')",
+        "what": "create a client on an action name"
+      },
+      {
+        "api": "self._client.wait_for_server()",
+        "what": "block until the action server exists"
+      },
+      {
+        "api": "goal = Fibonacci.Goal(); goal.order = order",
+        "what": "build and fill the goal message"
+      },
+      {
+        "api": "self._client.send_goal_async(goal, feedback_callback=self.on_feedback)",
+        "what": "send goal, wire feedback callback"
+      },
+      {
+        "api": "future.add_done_callback(self.on_goal_response)",
+        "what": "handle goal acceptance when ready"
+      },
+      {
+        "api": "goal_handle = future.result(); goal_handle.accepted",
+        "what": "check whether the goal was accepted"
+      },
+      {
+        "api": "goal_handle.get_result_async().add_done_callback(self.on_result)",
+        "what": "fetch the final result asynchronously"
+      }
+    ]
   },
   {
     "id": "module-5",
@@ -222,21 +378,59 @@
         {
           "kind": "param_value",
           "description": "Confirms the node declared 'max_velocity' with the default 1.0.",
-          "params": { "node": "drive_node", "param": "max_velocity", "expected": 1.0 }
+          "params": {
+            "node": "drive_node",
+            "param": "max_velocity",
+            "expected": 1.0
+          }
         },
         {
           "kind": "stdout_contains",
           "description": "Confirms the timer loop logged the initial value before any change.",
-          "params": { "text": "current max_velocity = 1.0" }
+          "params": {
+            "text": "current max_velocity = 1.0"
+          }
         },
         {
           "kind": "stdout_contains",
           "description": "Confirms the node reflected the externally injected value.",
-          "params": { "text": "current max_velocity = 2.5" }
+          "params": {
+            "text": "current max_velocity = 2.5"
+          }
         }
       ],
       "timeoutSeconds": 15,
       "harnessNotes": "The student script blocks on rclpy.spin(), so the harness runs it as a subprocess and lets the node come up. A sibling rclpy 'probe' node uses get_parameters or a parameter client (rclpy AsyncParameterClient against /drive_node) to read 'max_velocity' and assert it equals the default 1.0. After observing the initial 'current max_velocity = 1.0' line in the merged stdout/stderr, the harness injects a new value of 2.5 externally -- either via the AsyncParameterClient set_parameters call or by invoking 'ros2 param set /drive_node max_velocity 2.5' -- and then waits a few timer ticks. It asserts the merged output now contains 'current max_velocity = 2.5' (proving the loop re-reads the live value) and may also confirm a 'max_velocity changed to 2.5' line from the on-set callback. The run is bounded by the timeout and the process is SIGINT'd afterward; all checks must pass."
-    }
+    },
+    "quickReference": [
+      {
+        "api": "from rcl_interfaces.msg import SetParametersResult",
+        "what": "return type for set-parameter callbacks"
+      },
+      {
+        "api": "self.declare_parameter('max_velocity', 1.0)",
+        "what": "declare a double parameter with default"
+      },
+      {
+        "api": "self.get_parameter('max_velocity').value",
+        "what": "read the current parameter value"
+      },
+      {
+        "api": "self.add_on_set_parameters_callback(self.on_param_change)",
+        "what": "react when a parameter is set"
+      },
+      {
+        "api": "self.create_timer(0.5, self.loop)",
+        "what": "re-read the parameter each tick"
+      },
+      {
+        "api": "for p in params: p.name; p.value",
+        "what": "inspect each parameter being set"
+      },
+      {
+        "api": "return SetParametersResult(successful=True)",
+        "what": "accept the parameter change"
+      }
+    ]
   }
 ]

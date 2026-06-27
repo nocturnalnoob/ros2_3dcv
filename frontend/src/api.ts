@@ -13,6 +13,10 @@ export interface Exercise {
   solutionCode: string;
   supportFiles?: Record<string, string>;
 }
+export interface QuickRef {
+  api: string;
+  what: string;
+}
 export interface Module {
   id: string;
   phase: number;
@@ -21,6 +25,7 @@ export interface Module {
   topic: string;
   estimatedMinutes: number;
   learningObjectives: string[];
+  quickReference?: QuickRef[];
   lesson: { markdown: string };
   exercise: Exercise;
   verification: {

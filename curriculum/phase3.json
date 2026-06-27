@@ -30,7 +30,9 @@
         {
           "kind": "node_exists",
           "description": "The tf_circle_publisher node is alive on the graph.",
-          "params": { "nodeName": "tf_circle_publisher" }
+          "params": {
+            "nodeName": "tf_circle_publisher"
+          }
         },
         {
           "kind": "tf_published",
@@ -57,7 +59,45 @@
       ],
       "timeoutSeconds": 20,
       "harnessNotes": "The harness launches the student node, then runs a probe node that subscribes to /tf using a tf2_ros.Buffer + TransformListener. It collects at least 3 stamped transforms over ~1.5s. It asserts (a) the node tf_circle_publisher is present via the graph API, (b) a transform with header.frame_id == 'map' and child_frame_id == 'camera_link' exists, (c) the quaternion norm is approximately 1.0 (rejecting the all-zero default), and (d) the Euclidean distance between the first and last sampled translation exceeds 0.05 m, confirming time-varying motion rather than a static transform. Use simulated/wall clock consistently across student and probe."
-    }
+    },
+    "quickReference": [
+      {
+        "api": "import math",
+        "what": "for cos/sin of the circle"
+      },
+      {
+        "api": "from geometry_msgs.msg import TransformStamped",
+        "what": "a stamped parent-to-child transform"
+      },
+      {
+        "api": "from tf2_ros import TransformBroadcaster",
+        "what": "broadcasts dynamic transforms on /tf"
+      },
+      {
+        "api": "self.br = TransformBroadcaster(self)",
+        "what": "create the broadcaster bound to node"
+      },
+      {
+        "api": "now = self.get_clock().now(); now.to_msg()",
+        "what": "current time as a stamp"
+      },
+      {
+        "api": "(now - self.start).nanoseconds * 1e-9",
+        "what": "elapsed seconds since start"
+      },
+      {
+        "api": "t.header.frame_id = 'map'; t.child_frame_id = 'camera_link'",
+        "what": "set parent and child frames"
+      },
+      {
+        "api": "t.transform.translation.x = math.cos(elapsed)",
+        "what": "set translation along the circle"
+      },
+      {
+        "api": "self.br.sendTransform(t)  # rotation.w = 1.0",
+        "what": "broadcast with identity rotation"
+      }
+    ]
   },
   {
     "id": "module-11",
@@ -90,7 +130,10 @@
         {
           "kind": "bag_file_written",
           "description": "A valid rosbag directory with metadata and storage files exists at the sandbox bag uri.",
-          "params": { "bagUriEnv": "STUDENT_BAG_URI", "requireMetadataYaml": true }
+          "params": {
+            "bagUriEnv": "STUDENT_BAG_URI",
+            "requireMetadataYaml": true
+          }
         },
         {
           "kind": "bag_file_written",
@@ -100,13 +143,54 @@
             "expectTopic": "/chatter",
             "expectType": "std_msgs/msg/String",
             "expectCount": 1,
-            "expectDeserializedField": { "field": "data", "value": "hello bag" }
+            "expectDeserializedField": {
+              "field": "data",
+              "value": "hello bag"
+            }
           }
         }
       ],
       "timeoutSeconds": 20,
       "harnessNotes": "The harness creates a fresh sandbox temp directory (e.g. via mkdtemp) and passes a bag uri inside it as argv[1], also exporting it as STUDENT_BAG_URI; it runs the student script, then independently opens that bag with a rosbag2_py.SequentialReader configured with matching StorageOptions(storage_id='sqlite3') and cdr ConverterOptions. It first asserts the bag directory and its metadata.yaml exist. It then reads topic metadata and asserts '/chatter' is registered as 'std_msgs/msg/String', loops read_next() to count messages (must be exactly 1), and deserialize_message(data, std_msgs.msg.String) on the single record, asserting .data == 'hello bag'. The temp directory is removed after grading."
-    }
+    },
+    "quickReference": [
+      {
+        "api": "import rosbag2_py",
+        "what": "programmatic rosbag read/write API"
+      },
+      {
+        "api": "from rclpy.serialization import serialize_message",
+        "what": "message to raw bytes for the bag"
+      },
+      {
+        "api": "from std_msgs.msg import String",
+        "what": "the message type being recorded"
+      },
+      {
+        "api": "rosbag2_py.StorageOptions(uri=bag_uri, storage_id='sqlite3')",
+        "what": "where the bag lives and its backend"
+      },
+      {
+        "api": "rosbag2_py.ConverterOptions(input_serialization_format='cdr', output_serialization_format='cdr')",
+        "what": "serialization formats (cdr default)"
+      },
+      {
+        "api": "writer = rosbag2_py.SequentialWriter(); writer.open(storage_options, converter_options)",
+        "what": "open the bag writer"
+      },
+      {
+        "api": "rosbag2_py.TopicMetadata(name='/chatter', type='std_msgs/msg/String', serialization_format='cdr')",
+        "what": "declare a topic's schema"
+      },
+      {
+        "api": "writer.create_topic(topic_info)",
+        "what": "register the topic before writing"
+      },
+      {
+        "api": "writer.write('/chatter', serialize_message(msg), stamp_ns)",
+        "what": "write serialized message with timestamp"
+      }
+    ]
   },
   {
     "id": "module-12",
@@ -139,7 +223,10 @@
         {
           "kind": "topic_msg_type",
           "description": "'/detected_boxes' publishes visualization_msgs/msg/MarkerArray.",
-          "params": { "topic": "/detected_boxes", "expectedType": "visualization_msgs/msg/MarkerArray" }
+          "params": {
+            "topic": "/detected_boxes",
+            "expectedType": "visualization_msgs/msg/MarkerArray"
+          }
         },
         {
           "kind": "marker_array_valid",
@@ -157,7 +244,45 @@
       ],
       "timeoutSeconds": 20,
       "harnessNotes": "The harness launches the student node and runs a probe subscriber on '/detected_boxes' typed as visualization_msgs/msg/MarkerArray (matching the QoS, depth 10). It waits up to the timeout for the first message. It asserts the topic type via the graph introspection API, then for the captured MarkerArray asserts: markers list length >= 2; every marker.type == Marker.CUBE (3); every marker.scale.x/y/z > 0; every marker.header.frame_id is a non-empty string; every marker.color.a > 0; and the set of (ns, id) pairs has no duplicates. This mirrors what a Foxglove WebSocket client needs to actually render the boxes, so passing means the output is valid for a web visualization session."
-    }
+    },
+    "quickReference": [
+      {
+        "api": "from visualization_msgs.msg import Marker, MarkerArray",
+        "what": "drawable 3D shapes for viewers"
+      },
+      {
+        "api": "self.create_publisher(MarkerArray, '/detected_boxes', 10)",
+        "what": "publish a list of markers"
+      },
+      {
+        "api": "self.create_timer(0.5, self.publish_boxes)",
+        "what": "publish at 2 Hz"
+      },
+      {
+        "api": "m.header.frame_id = 'map'; m.header.stamp = self.get_clock().now().to_msg()",
+        "what": "frame and time for the marker"
+      },
+      {
+        "api": "m.id = i; m.ns = 'detections'",
+        "what": "unique id within the namespace"
+      },
+      {
+        "api": "m.type = Marker.CUBE; m.action = Marker.ADD",
+        "what": "make it an added cube"
+      },
+      {
+        "api": "m.scale.x/y/z = 1.0  # non-zero",
+        "what": "box dimensions must be non-zero"
+      },
+      {
+        "api": "m.color.a = 1.0  # alpha > 0",
+        "what": "alpha > 0 or it's invisible"
+      },
+      {
+        "api": "arr.markers.append(m); self.pub.publish(arr)",
+        "what": "collect markers and publish array"
+      }
+    ]
   },
   {
     "id": "module-13",
@@ -190,7 +315,10 @@
         {
           "kind": "node_exists",
           "description": "The emergency_stop node is present and subscribed to /scan.",
-          "params": { "nodeName": "emergency_stop", "requireSubscription": "/scan" }
+          "params": {
+            "nodeName": "emergency_stop",
+            "requireSubscription": "/scan"
+          }
         },
         {
           "kind": "topic_published",
@@ -204,7 +332,41 @@
       ],
       "timeoutSeconds": 20,
       "harnessNotes": "The harness launches the student node, then runs a probe that publishes one synthetic sensor_msgs/msg/LaserScan on '/scan' with angle_min=-1.57, angle_max=1.57, range_min=0.05, range_max=10.0, and a ranges array padded with large values (e.g. 5.0) plus a planted close reading of 0.30 m (and some inf entries to verify filtering). The probe subscribes to '/cmd_vel' as geometry_msgs/msg/Twist. It asserts the emergency_stop node exists and subscribes to /scan, then that within the timeout at least one Twist arrives on /cmd_vel with all six components equal to 0.0 (zero e-stop). A negative phase (publishing a scan whose closest valid range is 2.0 m) may optionally confirm no Twist is published when nothing is near."
-    }
+    },
+    "quickReference": [
+      {
+        "api": "import math",
+        "what": "for math.isfinite range filtering"
+      },
+      {
+        "api": "from sensor_msgs.msg import LaserScan",
+        "what": "1D sweep of distance readings"
+      },
+      {
+        "api": "from geometry_msgs.msg import Twist",
+        "what": "velocity command message type"
+      },
+      {
+        "api": "self.create_publisher(Twist, '/cmd_vel', 10)",
+        "what": "publish drive commands"
+      },
+      {
+        "api": "self.create_subscription(LaserScan, '/scan', self.on_scan, 10)",
+        "what": "subscribe to the laser scan"
+      },
+      {
+        "api": "[r for r in msg.ranges if math.isfinite(r) and msg.range_min <= r <= msg.range_max]",
+        "what": "keep only valid finite ranges"
+      },
+      {
+        "api": "closest = min(valid) if valid else float('inf')",
+        "what": "find the nearest valid distance"
+      },
+      {
+        "api": "stop = Twist(); self.cmd_pub.publish(stop)",
+        "what": "publish zero Twist as e-stop"
+      }
+    ]
   },
   {
     "id": "module-14",
@@ -261,6 +423,32 @@
       ],
       "timeoutSeconds": 20,
       "harnessNotes": "The harness runs a simulated ros2 CLI environment with a single pre-registered topic /turtle1/cmd_vel of type geometry_msgs/msg/Twist (no real DDS needed; a fixture maps topic->type and type->definition). Each typed line is captured and matched against the ordered regex steps. Step 1 must be exactly 'ros2 topic type /turtle1/cmd_vel'. Step 2 must be 'ros2 interface show geometry_msgs/msg/Twist' (the type string the simulator returned for step 1; the matcher can also accept the type echoed from step 1's stdout). Step 3 must be a 'ros2 topic pub' to /turtle1/cmd_vel with type geometry_msgs/msg/Twist and a non-empty YAML payload, with optional --once or -1 single-shot flag. Commands must appear in this relative order; extra exploratory commands (ros2 topic list, echo) between them are ignored. The simulator returns canned realistic stdout for each command so the user can read the type and fields just like a live system."
-    }
+    },
+    "quickReference": [
+      {
+        "api": "ros2 topic type /turtle1/cmd_vel",
+        "what": "show a topic's message type"
+      },
+      {
+        "api": "ros2 interface show geometry_msgs/msg/Twist",
+        "what": "show the message fields"
+      },
+      {
+        "api": "ros2 topic pub --once /turtle1/cmd_vel geometry_msgs/msg/Twist '{linear: {x: 2.0}, angular: {z: 1.8}}'",
+        "what": "publish one test message (YAML payload)"
+      },
+      {
+        "api": "ros2 topic echo /turtle1/cmd_vel",
+        "what": "print messages as they arrive"
+      },
+      {
+        "api": "ros2 topic hz /turtle1/cmd_vel",
+        "what": "measure a topic's publish rate"
+      },
+      {
+        "api": "ros2 node list / ros2 node info <node>",
+        "what": "see nodes and their connections"
+      }
+    ]
   }
 ]

@@ -47,6 +47,19 @@ function WorkbenchInner({ module }: { module: Module }) {
         <Link to="/" className="back">← All modules</Link>
         <h1>{module.title}</h1>
         <p className="meta">~{module.estimatedMinutes} min · Phase {module.phase}</p>
+        {module.quickReference && module.quickReference.length > 0 && (
+          <details className="cheatsheet" open>
+            <summary>🧰 Functions &amp; commands you'll use</summary>
+            <dl>
+              {module.quickReference.map((q, i) => (
+                <div className="cheat-row" key={i}>
+                  <dt><code>{q.api}</code></dt>
+                  <dd>{q.what}</dd>
+                </div>
+              ))}
+            </dl>
+          </details>
+        )}
         <ReactMarkdown>{module.lesson.markdown}</ReactMarkdown>
         <div className="exercise-box">
           <h3>Exercise</h3>

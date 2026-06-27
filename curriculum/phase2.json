@@ -30,27 +30,75 @@
         {
           "kind": "node_exists",
           "description": "A node named 'grayscale_filter' is present on the ROS graph.",
-          "params": { "node_name": "grayscale_filter" }
+          "params": {
+            "node_name": "grayscale_filter"
+          }
         },
         {
           "kind": "topic_msg_type",
           "description": "'/image_filtered' publishes sensor_msgs/msg/Image.",
-          "params": { "topic": "/image_filtered", "msg_type": "sensor_msgs/msg/Image" }
+          "params": {
+            "topic": "/image_filtered",
+            "msg_type": "sensor_msgs/msg/Image"
+          }
         },
         {
           "kind": "image_republished",
           "description": "Output is a mono8 image with the same height/width as the input.",
-          "params": { "topic": "/image_filtered", "expected_encoding": "mono8", "expected_height": 48, "expected_width": 64 }
+          "params": {
+            "topic": "/image_filtered",
+            "expected_encoding": "mono8",
+            "expected_height": 48,
+            "expected_width": 64
+          }
         },
         {
           "kind": "numeric_close",
           "description": "Center pixel of output equals grayscale of the planted color within tolerance.",
-          "params": { "expected": 150, "tolerance": 2, "value_source": "output_image_center_pixel" }
+          "params": {
+            "expected": 150,
+            "tolerance": 2,
+            "value_source": "output_image_center_pixel"
+          }
         }
       ],
       "timeoutSeconds": 20,
       "harnessNotes": "The harness initializes rclpy and publishes one sensor_msgs/msg/Image on '/image_raw' built from a NumPy array of shape (48, 64, 3), dtype uint8, encoding 'bgr8', where every pixel is BGR = (100, 150, 200) (so B=100, G=150, R=200). It sets header.stamp to a sentinel value (sec=42, nanosec=7) and header.frame_id='camera_color_optical_frame'. It subscribes to '/image_filtered' and asserts: (1) a message arrives within the timeout; (2) msg.encoding == 'mono8'; (3) msg.height == 48 and msg.width == 64; (4) the center pixel at (row=24, col=32) decoded via cv_bridge equals round(0.299*200 + 0.587*150 + 0.114*100) which OpenCV COLOR_BGR2GRAY computes as 150 (+/- 2 for rounding); (5) msg.header.stamp.sec == 42 and msg.header.stamp.nanosec == 7, confirming the header was copied. Node presence and topic type are checked via the ROS graph introspection API."
-    }
+    },
+    "quickReference": [
+      {
+        "api": "from sensor_msgs.msg import Image",
+        "what": "the ROS image message type"
+      },
+      {
+        "api": "from cv_bridge import CvBridge",
+        "what": "translator between Image and OpenCV"
+      },
+      {
+        "api": "import cv2",
+        "what": "OpenCV image-processing library"
+      },
+      {
+        "api": "self.bridge = CvBridge()",
+        "what": "create the cv_bridge converter"
+      },
+      {
+        "api": "self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')",
+        "what": "ROS Image to NumPy array"
+      },
+      {
+        "api": "cv2.cvtColor(cv_img, cv2.COLOR_BGR2GRAY)",
+        "what": "convert color image to grayscale"
+      },
+      {
+        "api": "self.bridge.cv2_to_imgmsg(gray, encoding='mono8')",
+        "what": "NumPy array back to ROS Image"
+      },
+      {
+        "api": "out_msg.header = msg.header",
+        "what": "preserve timestamp and frame_id"
+      }
+    ]
   },
   {
     "id": "module-7",
@@ -83,17 +131,56 @@
         {
           "kind": "node_exists",
           "description": "A node named 'depth_center_reader' is present on the ROS graph.",
-          "params": { "node_name": "depth_center_reader" }
+          "params": {
+            "node_name": "depth_center_reader"
+          }
         },
         {
           "kind": "stdout_regex",
           "description": "Stdout reports the center distance in mm as an integer with the exact format.",
-          "params": { "pattern": "^Center distance: 1500 mm$", "multiline": true }
+          "params": {
+            "pattern": "^Center distance: 1500 mm$",
+            "multiline": true
+          }
         }
       ],
       "timeoutSeconds": 20,
       "harnessNotes": "The harness publishes one sensor_msgs/msg/Image on '/camera/depth/image_rect_raw' built from a NumPy array of shape (480, 640), dtype uint16, encoding '16UC1'. The whole array is filled with 800 EXCEPT the exact center pixel at (row=240, col=320) which is set to 1500. This makes the center value unambiguous: a solution that reads the correct center pixel reports 1500, while a transposed index (col//2, row//2) would also be 1500 here, so a second background pixel at (row=10, col=10)=999 plus the distinct fill value 800 ensures only reading [h//2, w//2] yields 1500 (a solution that, e.g., reports the array max would print 1500 too, so the harness ALSO runs a second trial where center=1200 and max=4000 elsewhere, requiring the printed value to track the center, not the max). The harness captures the node's stdout and asserts a line matching '^Center distance: 1500 mm$' appears for trial 1 (and '^Center distance: 1200 mm$' for trial 2). The integer must be exact; no decimal point, no meters."
-    }
+    },
+    "quickReference": [
+      {
+        "api": "from sensor_msgs.msg import Image",
+        "what": "the ROS image message type"
+      },
+      {
+        "api": "from cv_bridge import CvBridge",
+        "what": "translator between Image and OpenCV"
+      },
+      {
+        "api": "self.create_subscription(Image, '/camera/depth/image_rect_raw', self.on_depth, 10)",
+        "what": "subscribe to the depth image topic"
+      },
+      {
+        "api": "self.bridge.imgmsg_to_cv2(msg, desired_encoding='16UC1')",
+        "what": "decode depth as uint16 NumPy array"
+      },
+      {
+        "api": "h, w = depth.shape",
+        "what": "get image height and width"
+      },
+      {
+        "api": "depth[h // 2, w // 2]",
+        "what": "index the center pixel as [row, col]"
+      },
+      {
+        "api": "int(depth[h // 2, w // 2])  # millimeters",
+        "what": "center distance in millimeters"
+      },
+      {
+        "api": "print(f'Center distance: {center_mm} mm', flush=True)",
+        "what": "print exact required output line"
+      }
+    ]
   },
   {
     "id": "module-8",
@@ -126,17 +213,52 @@
         {
           "kind": "node_exists",
           "description": "A node named 'near_point_counter' is present on the ROS graph.",
-          "params": { "node_name": "near_point_counter" }
+          "params": {
+            "node_name": "near_point_counter"
+          }
         },
         {
           "kind": "stdout_regex",
           "description": "Stdout reports the exact count of points within 1.5 m.",
-          "params": { "pattern": "^Points within 1\\.5 m: 3$", "multiline": true }
+          "params": {
+            "pattern": "^Points within 1\\.5 m: 3$",
+            "multiline": true
+          }
         }
       ],
       "timeoutSeconds": 20,
       "harnessNotes": "The harness builds one sensor_msgs/msg/PointCloud2 with point_cloud2.create_cloud_xyz32 from exactly 6 float32 (x,y,z) points: P1=(1.0,0.0,0.0) dist 1.0 NEAR; P2=(0.0,0.0,1.4) dist 1.4 NEAR; P3=(0.8,0.8,0.8) dist 1.3856 NEAR; P4=(1.0,1.0,1.0) dist 1.7320 FAR; P5=(3.0,0.0,0.0) dist 3.0 FAR; P6=(nan,nan,nan) which skip_nans must drop. The boundary is exclusive of P4 (1.732 > 1.5). Ground-truth count within <=1.5 m is exactly 3 (P1,P2,P3). The harness publishes this cloud on '/points', captures the node's stdout, and asserts a line matching '^Points within 1\\.5 m: 3$' appears. Because P3 (1.3856) is close to the threshold and P4 (1.732) is just over, an off-by-one in the comparison or failure to skip NaNs produces a different count, so the value 3 uniquely identifies a correct solution. Node presence is verified via graph introspection."
-    }
+    },
+    "quickReference": [
+      {
+        "api": "import math",
+        "what": "for the Euclidean distance sqrt"
+      },
+      {
+        "api": "from sensor_msgs.msg import PointCloud2",
+        "what": "the 3D point cloud message type"
+      },
+      {
+        "api": "from sensor_msgs_py import point_cloud2",
+        "what": "helper to read PointCloud2 fields"
+      },
+      {
+        "api": "self.create_subscription(PointCloud2, '/points', self.on_cloud, 10)",
+        "what": "subscribe to the point cloud topic"
+      },
+      {
+        "api": "point_cloud2.read_points(msg, field_names=('x','y','z'), skip_nans=True)",
+        "what": "iterate clean x,y,z floats in meters"
+      },
+      {
+        "api": "math.sqrt(x*x + y*y + z*z)",
+        "what": "distance of a point from origin"
+      },
+      {
+        "api": "print(f'Points within 1.5 m: {near}', flush=True)",
+        "what": "print exact required output line"
+      }
+    ]
   },
   {
     "id": "module-9",
@@ -169,36 +291,87 @@
         {
           "kind": "node_exists",
           "description": "A node named 'pose_estimator' is present on the ROS graph.",
-          "params": { "node_name": "pose_estimator" }
+          "params": {
+            "node_name": "pose_estimator"
+          }
         },
         {
           "kind": "topic_msg_type",
           "description": "'/estimated_pose' publishes geometry_msgs/msg/PoseStamped.",
-          "params": { "topic": "/estimated_pose", "msg_type": "geometry_msgs/msg/PoseStamped" }
+          "params": {
+            "topic": "/estimated_pose",
+            "msg_type": "geometry_msgs/msg/PoseStamped"
+          }
         },
         {
           "kind": "numeric_close",
           "description": "Pose position x equals image width/1000.",
-          "params": { "field": "pose.position.x", "expected": 0.64, "tolerance": 0.0001 }
+          "params": {
+            "field": "pose.position.x",
+            "expected": 0.64,
+            "tolerance": 0.0001
+          }
         },
         {
           "kind": "numeric_close",
           "description": "Pose position y equals image height/1000.",
-          "params": { "field": "pose.position.y", "expected": 0.48, "tolerance": 0.0001 }
+          "params": {
+            "field": "pose.position.y",
+            "expected": 0.48,
+            "tolerance": 0.0001
+          }
         },
         {
           "kind": "numeric_close",
           "description": "Pose position z equals 1.0.",
-          "params": { "field": "pose.position.z", "expected": 1.0, "tolerance": 0.0001 }
+          "params": {
+            "field": "pose.position.z",
+            "expected": 1.0,
+            "tolerance": 0.0001
+          }
         },
         {
           "kind": "numeric_close",
           "description": "Orientation is the identity quaternion (w = 1).",
-          "params": { "field": "pose.orientation.w", "expected": 1.0, "tolerance": 0.0001 }
+          "params": {
+            "field": "pose.orientation.w",
+            "expected": 1.0,
+            "tolerance": 0.0001
+          }
         }
       ],
       "timeoutSeconds": 20,
       "harnessNotes": "The harness publishes one sensor_msgs/msg/Image on '/image_raw' with width=640, height=480, encoding='bgr8', header.stamp set to a sentinel (sec=99, nanosec=5) and header.frame_id='camera_color_optical_frame'. It subscribes to '/estimated_pose' and asserts a geometry_msgs/msg/PoseStamped arrives within the timeout with: pose.position.x == 0.64 (640/1000), pose.position.y == 0.48 (480/1000), pose.position.z == 1.0 (all +/- 1e-4); orientation exactly (x=0.0, y=0.0, z=0.0, w=1.0) and normalized (x^2+y^2+z^2+w^2 == 1 within 1e-6); header.frame_id == 'camera_link'; and header.stamp.sec == 99 and header.stamp.nanosec == 5 confirming the image stamp was reused. Node presence and topic type are checked via the ROS graph introspection API."
-    }
+    },
+    "quickReference": [
+      {
+        "api": "from sensor_msgs.msg import Image",
+        "what": "the input image message type"
+      },
+      {
+        "api": "from geometry_msgs.msg import PoseStamped",
+        "what": "frame-stamped position plus orientation"
+      },
+      {
+        "api": "self.create_publisher(PoseStamped, '/estimated_pose', 10)",
+        "what": "publish the estimated pose"
+      },
+      {
+        "api": "out.header.stamp = msg.header.stamp",
+        "what": "reuse the input image timestamp"
+      },
+      {
+        "api": "out.header.frame_id = 'camera_link'",
+        "what": "set the reference frame"
+      },
+      {
+        "api": "out.pose.position.x = msg.width / 1000.0",
+        "what": "set position (x,y,z) in meters"
+      },
+      {
+        "api": "out.pose.orientation.w = 1.0  # x=y=z=0.0",
+        "what": "identity normalized quaternion"
+      }
+    ]
   }
 ]

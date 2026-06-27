@@ -64,7 +64,37 @@
         ],
         "timeoutSeconds": 15,
         "harnessNotes": "The harness runs the student script as a subprocess inside the sandbox with a sourced ROS 2 environment. It captures both stdout and stderr (rcutils logging is emitted on stderr by default, so the harness merges the two streams before matching) and applies the stdout_contains check against the combined buffer. Concurrently, before the student script exits, the harness runs a sibling rclpy 'probe' node that calls get_node_names() in a short poll loop (up to ~5s) and asserts 'system_node' appears. Because the student uses spin_once, the harness slightly slows the probe by injecting a small startup barrier and may re-run with rclpy.spin for one short window if discovery is racy; both the log line and graph presence must be observed for a pass."
-      }
+      },
+      "quickReference": [
+        {
+          "api": "from rclpy.node import Node",
+          "what": "base class for every ROS 2 node"
+        },
+        {
+          "api": "rclpy.init(args=args)",
+          "what": "start the ROS 2 client library"
+        },
+        {
+          "api": "class SystemNode(Node): super().__init__('system_node')",
+          "what": "create a node by subclassing Node"
+        },
+        {
+          "api": "self.get_logger().info('System initialized')",
+          "what": "log a message through ROS"
+        },
+        {
+          "api": "rclpy.spin_once(node, timeout_sec=0.1)",
+          "what": "process callbacks once, briefly"
+        },
+        {
+          "api": "node.destroy_node()",
+          "what": "release the node's resources"
+        },
+        {
+          "api": "rclpy.shutdown()",
+          "what": "tear down the ROS context"
+        }
+      ]
     },
     {
       "id": "module-2",
@@ -128,7 +158,37 @@
         ],
         "timeoutSeconds": 15,
         "harnessNotes": "Because the student script blocks on executor.spin(), the harness launches it as a subprocess and runs for a bounded window (about 6 seconds) before sending SIGINT to break the spin via the KeyboardInterrupt path. While it runs, the harness spawns a sibling rclpy 'probe' node that creates its own subscription to 'chatter' (matching std_msgs/msg/String, depth 10), counts the messages it receives, and timestamps them. It computes the empirical rate as (count-1)/(last_ts-first_ts) and asserts it falls within 2.0 +/- 0.4 Hz; it reads the publisher's declared type via get_topic_names_and_types() to satisfy the type check. The merged stdout/stderr buffer is scanned for 'I heard:' to prove the student's own subscriber callback fired. All four checks must pass."
-      }
+      },
+      "quickReference": [
+        {
+          "api": "from std_msgs.msg import String",
+          "what": "the text message type"
+        },
+        {
+          "api": "from rclpy.executors import MultiThreadedExecutor",
+          "what": "run several nodes together"
+        },
+        {
+          "api": "self.create_publisher(String, 'chatter', 10)",
+          "what": "publish String on a topic, depth 10"
+        },
+        {
+          "api": "self.create_timer(0.5, self.tick)",
+          "what": "fire a callback every 0.5s (2 Hz)"
+        },
+        {
+          "api": "self.pub.publish(msg)  # msg.data = '...'",
+          "what": "send a message onto the topic"
+        },
+        {
+          "api": "self.create_subscription(String, 'chatter', self.on_msg, 10)",
+          "what": "receive messages via a callback"
+        },
+        {
+          "api": "executor.add_node(node); executor.spin()",
+          "what": "add nodes and run them together"
+        }
+      ]
     },
     {
       "id": "module-3",
@@ -186,7 +246,33 @@
         ],
         "timeoutSeconds": 15,
         "harnessNotes": "The student script blocks on rclpy.spin(), so the harness runs it as a subprocess and lets it advertise the service. The harness then spawns a sibling rclpy 'probe' client node that calls create_client(AddTwoInts, 'add_two_ints'), waits up to ~5s with wait_for_service(), and verifies via get_service_names_and_types() that the type is example_interfaces/srv/AddTwoInts. It builds AddTwoInts.Request(a=41, b=1), calls call_async, and uses spin_until_future_complete to retrieve the result, asserting future.result().sum == 42. It also injects a second pair (a=10, b=20) and checks sum==30 to guard against hardcoding. The merged stdout/stderr is scanned for 'sum=42' to confirm the student's own logging ran. After probing, the harness sends SIGINT to stop the server. All checks must pass."
-      }
+      },
+      "quickReference": [
+        {
+          "api": "from example_interfaces.srv import AddTwoInts",
+          "what": "the request/response service type"
+        },
+        {
+          "api": "self.create_service(AddTwoInts, 'add_two_ints', self.handle)",
+          "what": "advertise a service with a callback"
+        },
+        {
+          "api": "def handle(self, request, response):",
+          "what": "callback signature is (request, response)"
+        },
+        {
+          "api": "response.sum = request.a + request.b",
+          "what": "fill in the response fields"
+        },
+        {
+          "api": "return response",
+          "what": "must return response (top bug if omitted)"
+        },
+        {
+          "api": "rclpy.spin(node)",
+          "what": "keep the server available to clients"
+        }
+      ]
     },
     {
       "id": "module-4",
@@ -241,7 +327,45 @@
         ],
         "timeoutSeconds": 15,
         "harnessNotes": "The harness first launches its own Fibonacci action server (a sibling rclpy node implementing action_tutorials_interfaces/action/Fibonacci on action name 'fibonacci'). The server accepts the goal, computes the sequence incrementally, and publishes a feedback message with partial_sequence after each step (with a short sleep, e.g. 0.3s, so multiple feedback messages are emitted), then returns the full sequence as the result. It records that a goal was received to satisfy the callback_invoked check. The harness then runs the student script as a subprocess; the student client connects, sends order=10, and its callbacks fire. The merged stdout/stderr is scanned for a 'Feedback: [...]' line (regex) proving feedback was handled, and for the exact result line for order=10, which is [0, 1, 1, 2, 3, 5, 8, 13, 21, 34, 55]. The harness bounds the run to the timeout and SIGINTs both processes afterward. All three checks must pass."
-      }
+      },
+      "quickReference": [
+        {
+          "api": "from rclpy.action import ActionClient",
+          "what": "client for long-running action tasks"
+        },
+        {
+          "api": "from action_tutorials_interfaces.action import Fibonacci",
+          "what": "the Fibonacci goal/feedback/result type"
+        },
+        {
+          "api": "ActionClient(self, Fibonacci, 'fibonacci')",
+          "what": "create a client on an action name"
+        },
+        {
+          "api": "self._client.wait_for_server()",
+          "what": "block until the action server exists"
+        },
+        {
+          "api": "goal = Fibonacci.Goal(); goal.order = order",
+          "what": "build and fill the goal message"
+        },
+        {
+          "api": "self._client.send_goal_async(goal, feedback_callback=self.on_feedback)",
+          "what": "send goal, wire feedback callback"
+        },
+        {
+          "api": "future.add_done_callback(self.on_goal_response)",
+          "what": "handle goal acceptance when ready"
+        },
+        {
+          "api": "goal_handle = future.result(); goal_handle.accepted",
+          "what": "check whether the goal was accepted"
+        },
+        {
+          "api": "goal_handle.get_result_async().add_done_callback(self.on_result)",
+          "what": "fetch the final result asynchronously"
+        }
+      ]
     },
     {
       "id": "module-5",
@@ -297,7 +421,37 @@
         ],
         "timeoutSeconds": 15,
         "harnessNotes": "The student script blocks on rclpy.spin(), so the harness runs it as a subprocess and lets the node come up. A sibling rclpy 'probe' node uses get_parameters or a parameter client (rclpy AsyncParameterClient against /drive_node) to read 'max_velocity' and assert it equals the default 1.0. After observing the initial 'current max_velocity = 1.0' line in the merged stdout/stderr, the harness injects a new value of 2.5 externally -- either via the AsyncParameterClient set_parameters call or by invoking 'ros2 param set /drive_node max_velocity 2.5' -- and then waits a few timer ticks. It asserts the merged output now contains 'current max_velocity = 2.5' (proving the loop re-reads the live value) and may also confirm a 'max_velocity changed to 2.5' line from the on-set callback. The run is bounded by the timeout and the process is SIGINT'd afterward; all checks must pass."
-      }
+      },
+      "quickReference": [
+        {
+          "api": "from rcl_interfaces.msg import SetParametersResult",
+          "what": "return type for set-parameter callbacks"
+        },
+        {
+          "api": "self.declare_parameter('max_velocity', 1.0)",
+          "what": "declare a double parameter with default"
+        },
+        {
+          "api": "self.get_parameter('max_velocity').value",
+          "what": "read the current parameter value"
+        },
+        {
+          "api": "self.add_on_set_parameters_callback(self.on_param_change)",
+          "what": "react when a parameter is set"
+        },
+        {
+          "api": "self.create_timer(0.5, self.loop)",
+          "what": "re-read the parameter each tick"
+        },
+        {
+          "api": "for p in params: p.name; p.value",
+          "what": "inspect each parameter being set"
+        },
+        {
+          "api": "return SetParametersResult(successful=True)",
+          "what": "accept the parameter change"
+        }
+      ]
     },
     {
       "id": "module-6",
@@ -364,7 +518,41 @@
         ],
         "timeoutSeconds": 20,
         "harnessNotes": "The harness initializes rclpy and publishes one sensor_msgs/msg/Image on '/image_raw' built from a NumPy array of shape (48, 64, 3), dtype uint8, encoding 'bgr8', where every pixel is BGR = (100, 150, 200) (so B=100, G=150, R=200). It sets header.stamp to a sentinel value (sec=42, nanosec=7) and header.frame_id='camera_color_optical_frame'. It subscribes to '/image_filtered' and asserts: (1) a message arrives within the timeout; (2) msg.encoding == 'mono8'; (3) msg.height == 48 and msg.width == 64; (4) the center pixel at (row=24, col=32) decoded via cv_bridge equals round(0.299*200 + 0.587*150 + 0.114*100) which OpenCV COLOR_BGR2GRAY computes as 150 (+/- 2 for rounding); (5) msg.header.stamp.sec == 42 and msg.header.stamp.nanosec == 7, confirming the header was copied. Node presence and topic type are checked via the ROS graph introspection API."
-      }
+      },
+      "quickReference": [
+        {
+          "api": "from sensor_msgs.msg import Image",
+          "what": "the ROS image message type"
+        },
+        {
+          "api": "from cv_bridge import CvBridge",
+          "what": "translator between Image and OpenCV"
+        },
+        {
+          "api": "import cv2",
+          "what": "OpenCV image-processing library"
+        },
+        {
+          "api": "self.bridge = CvBridge()",
+          "what": "create the cv_bridge converter"
+        },
+        {
+          "api": "self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')",
+          "what": "ROS Image to NumPy array"
+        },
+        {
+          "api": "cv2.cvtColor(cv_img, cv2.COLOR_BGR2GRAY)",
+          "what": "convert color image to grayscale"
+        },
+        {
+          "api": "self.bridge.cv2_to_imgmsg(gray, encoding='mono8')",
+          "what": "NumPy array back to ROS Image"
+        },
+        {
+          "api": "out_msg.header = msg.header",
+          "what": "preserve timestamp and frame_id"
+        }
+      ]
     },
     {
       "id": "module-7",
@@ -412,7 +600,41 @@
         ],
         "timeoutSeconds": 20,
         "harnessNotes": "The harness publishes one sensor_msgs/msg/Image on '/camera/depth/image_rect_raw' built from a NumPy array of shape (480, 640), dtype uint16, encoding '16UC1'. The whole array is filled with 800 EXCEPT the exact center pixel at (row=240, col=320) which is set to 1500. This makes the center value unambiguous: a solution that reads the correct center pixel reports 1500, while a transposed index (col//2, row//2) would also be 1500 here, so a second background pixel at (row=10, col=10)=999 plus the distinct fill value 800 ensures only reading [h//2, w//2] yields 1500 (a solution that, e.g., reports the array max would print 1500 too, so the harness ALSO runs a second trial where center=1200 and max=4000 elsewhere, requiring the printed value to track the center, not the max). The harness captures the node's stdout and asserts a line matching '^Center distance: 1500 mm$' appears for trial 1 (and '^Center distance: 1200 mm$' for trial 2). The integer must be exact; no decimal point, no meters."
-      }
+      },
+      "quickReference": [
+        {
+          "api": "from sensor_msgs.msg import Image",
+          "what": "the ROS image message type"
+        },
+        {
+          "api": "from cv_bridge import CvBridge",
+          "what": "translator between Image and OpenCV"
+        },
+        {
+          "api": "self.create_subscription(Image, '/camera/depth/image_rect_raw', self.on_depth, 10)",
+          "what": "subscribe to the depth image topic"
+        },
+        {
+          "api": "self.bridge.imgmsg_to_cv2(msg, desired_encoding='16UC1')",
+          "what": "decode depth as uint16 NumPy array"
+        },
+        {
+          "api": "h, w = depth.shape",
+          "what": "get image height and width"
+        },
+        {
+          "api": "depth[h // 2, w // 2]",
+          "what": "index the center pixel as [row, col]"
+        },
+        {
+          "api": "int(depth[h // 2, w // 2])  # millimeters",
+          "what": "center distance in millimeters"
+        },
+        {
+          "api": "print(f'Center distance: {center_mm} mm', flush=True)",
+          "what": "print exact required output line"
+        }
+      ]
     },
     {
       "id": "module-8",
@@ -460,7 +682,37 @@
         ],
         "timeoutSeconds": 20,
         "harnessNotes": "The harness builds one sensor_msgs/msg/PointCloud2 with point_cloud2.create_cloud_xyz32 from exactly 6 float32 (x,y,z) points: P1=(1.0,0.0,0.0) dist 1.0 NEAR; P2=(0.0,0.0,1.4) dist 1.4 NEAR; P3=(0.8,0.8,0.8) dist 1.3856 NEAR; P4=(1.0,1.0,1.0) dist 1.7320 FAR; P5=(3.0,0.0,0.0) dist 3.0 FAR; P6=(nan,nan,nan) which skip_nans must drop. The boundary is exclusive of P4 (1.732 > 1.5). Ground-truth count within <=1.5 m is exactly 3 (P1,P2,P3). The harness publishes this cloud on '/points', captures the node's stdout, and asserts a line matching '^Points within 1\\.5 m: 3$' appears. Because P3 (1.3856) is close to the threshold and P4 (1.732) is just over, an off-by-one in the comparison or failure to skip NaNs produces a different count, so the value 3 uniquely identifies a correct solution. Node presence is verified via graph introspection."
-      }
+      },
+      "quickReference": [
+        {
+          "api": "import math",
+          "what": "for the Euclidean distance sqrt"
+        },
+        {
+          "api": "from sensor_msgs.msg import PointCloud2",
+          "what": "the 3D point cloud message type"
+        },
+        {
+          "api": "from sensor_msgs_py import point_cloud2",
+          "what": "helper to read PointCloud2 fields"
+        },
+        {
+          "api": "self.create_subscription(PointCloud2, '/points', self.on_cloud, 10)",
+          "what": "subscribe to the point cloud topic"
+        },
+        {
+          "api": "point_cloud2.read_points(msg, field_names=('x','y','z'), skip_nans=True)",
+          "what": "iterate clean x,y,z floats in meters"
+        },
+        {
+          "api": "math.sqrt(x*x + y*y + z*z)",
+          "what": "distance of a point from origin"
+        },
+        {
+          "api": "print(f'Points within 1.5 m: {near}', flush=True)",
+          "what": "print exact required output line"
+        }
+      ]
     },
     {
       "id": "module-9",
@@ -544,7 +796,37 @@
         ],
         "timeoutSeconds": 20,
         "harnessNotes": "The harness publishes one sensor_msgs/msg/Image on '/image_raw' with width=640, height=480, encoding='bgr8', header.stamp set to a sentinel (sec=99, nanosec=5) and header.frame_id='camera_color_optical_frame'. It subscribes to '/estimated_pose' and asserts a geometry_msgs/msg/PoseStamped arrives within the timeout with: pose.position.x == 0.64 (640/1000), pose.position.y == 0.48 (480/1000), pose.position.z == 1.0 (all +/- 1e-4); orientation exactly (x=0.0, y=0.0, z=0.0, w=1.0) and normalized (x^2+y^2+z^2+w^2 == 1 within 1e-6); header.frame_id == 'camera_link'; and header.stamp.sec == 99 and header.stamp.nanosec == 5 confirming the image stamp was reused. Node presence and topic type are checked via the ROS graph introspection API."
-      }
+      },
+      "quickReference": [
+        {
+          "api": "from sensor_msgs.msg import Image",
+          "what": "the input image message type"
+        },
+        {
+          "api": "from geometry_msgs.msg import PoseStamped",
+          "what": "frame-stamped position plus orientation"
+        },
+        {
+          "api": "self.create_publisher(PoseStamped, '/estimated_pose', 10)",
+          "what": "publish the estimated pose"
+        },
+        {
+          "api": "out.header.stamp = msg.header.stamp",
+          "what": "reuse the input image timestamp"
+        },
+        {
+          "api": "out.header.frame_id = 'camera_link'",
+          "what": "set the reference frame"
+        },
+        {
+          "api": "out.pose.position.x = msg.width / 1000.0",
+          "what": "set position (x,y,z) in meters"
+        },
+        {
+          "api": "out.pose.orientation.w = 1.0  # x=y=z=0.0",
+          "what": "identity normalized quaternion"
+        }
+      ]
     },
     {
       "id": "module-10",
@@ -606,7 +888,45 @@
         ],
         "timeoutSeconds": 20,
         "harnessNotes": "The harness launches the student node, then runs a probe node that subscribes to /tf using a tf2_ros.Buffer + TransformListener. It collects at least 3 stamped transforms over ~1.5s. It asserts (a) the node tf_circle_publisher is present via the graph API, (b) a transform with header.frame_id == 'map' and child_frame_id == 'camera_link' exists, (c) the quaternion norm is approximately 1.0 (rejecting the all-zero default), and (d) the Euclidean distance between the first and last sampled translation exceeds 0.05 m, confirming time-varying motion rather than a static transform. Use simulated/wall clock consistently across student and probe."
-      }
+      },
+      "quickReference": [
+        {
+          "api": "import math",
+          "what": "for cos/sin of the circle"
+        },
+        {
+          "api": "from geometry_msgs.msg import TransformStamped",
+          "what": "a stamped parent-to-child transform"
+        },
+        {
+          "api": "from tf2_ros import TransformBroadcaster",
+          "what": "broadcasts dynamic transforms on /tf"
+        },
+        {
+          "api": "self.br = TransformBroadcaster(self)",
+          "what": "create the broadcaster bound to node"
+        },
+        {
+          "api": "now = self.get_clock().now(); now.to_msg()",
+          "what": "current time as a stamp"
+        },
+        {
+          "api": "(now - self.start).nanoseconds * 1e-9",
+          "what": "elapsed seconds since start"
+        },
+        {
+          "api": "t.header.frame_id = 'map'; t.child_frame_id = 'camera_link'",
+          "what": "set parent and child frames"
+        },
+        {
+          "api": "t.transform.translation.x = math.cos(elapsed)",
+          "what": "set translation along the circle"
+        },
+        {
+          "api": "self.br.sendTransform(t)  # rotation.w = 1.0",
+          "what": "broadcast with identity rotation"
+        }
+      ]
     },
     {
       "id": "module-11",
@@ -661,7 +981,45 @@
         ],
         "timeoutSeconds": 20,
         "harnessNotes": "The harness creates a fresh sandbox temp directory (e.g. via mkdtemp) and passes a bag uri inside it as argv[1], also exporting it as STUDENT_BAG_URI; it runs the student script, then independently opens that bag with a rosbag2_py.SequentialReader configured with matching StorageOptions(storage_id='sqlite3') and cdr ConverterOptions. It first asserts the bag directory and its metadata.yaml exist. It then reads topic metadata and asserts '/chatter' is registered as 'std_msgs/msg/String', loops read_next() to count messages (must be exactly 1), and deserialize_message(data, std_msgs.msg.String) on the single record, asserting .data == 'hello bag'. The temp directory is removed after grading."
-      }
+      },
+      "quickReference": [
+        {
+          "api": "import rosbag2_py",
+          "what": "programmatic rosbag read/write API"
+        },
+        {
+          "api": "from rclpy.serialization import serialize_message",
+          "what": "message to raw bytes for the bag"
+        },
+        {
+          "api": "from std_msgs.msg import String",
+          "what": "the message type being recorded"
+        },
+        {
+          "api": "rosbag2_py.StorageOptions(uri=bag_uri, storage_id='sqlite3')",
+          "what": "where the bag lives and its backend"
+        },
+        {
+          "api": "rosbag2_py.ConverterOptions(input_serialization_format='cdr', output_serialization_format='cdr')",
+          "what": "serialization formats (cdr default)"
+        },
+        {
+          "api": "writer = rosbag2_py.SequentialWriter(); writer.open(storage_options, converter_options)",
+          "what": "open the bag writer"
+        },
+        {
+          "api": "rosbag2_py.TopicMetadata(name='/chatter', type='std_msgs/msg/String', serialization_format='cdr')",
+          "what": "declare a topic's schema"
+        },
+        {
+          "api": "writer.create_topic(topic_info)",
+          "what": "register the topic before writing"
+        },
+        {
+          "api": "writer.write('/chatter', serialize_message(msg), stamp_ns)",
+          "what": "write serialized message with timestamp"
+        }
+      ]
     },
     {
       "id": "module-12",
@@ -715,7 +1073,45 @@
         ],
         "timeoutSeconds": 20,
         "harnessNotes": "The harness launches the student node and runs a probe subscriber on '/detected_boxes' typed as visualization_msgs/msg/MarkerArray (matching the QoS, depth 10). It waits up to the timeout for the first message. It asserts the topic type via the graph introspection API, then for the captured MarkerArray asserts: markers list length >= 2; every marker.type == Marker.CUBE (3); every marker.scale.x/y/z > 0; every marker.header.frame_id is a non-empty string; every marker.color.a > 0; and the set of (ns, id) pairs has no duplicates. This mirrors what a Foxglove WebSocket client needs to actually render the boxes, so passing means the output is valid for a web visualization session."
-      }
+      },
+      "quickReference": [
+        {
+          "api": "from visualization_msgs.msg import Marker, MarkerArray",
+          "what": "drawable 3D shapes for viewers"
+        },
+        {
+          "api": "self.create_publisher(MarkerArray, '/detected_boxes', 10)",
+          "what": "publish a list of markers"
+        },
+        {
+          "api": "self.create_timer(0.5, self.publish_boxes)",
+          "what": "publish at 2 Hz"
+        },
+        {
+          "api": "m.header.frame_id = 'map'; m.header.stamp = self.get_clock().now().to_msg()",
+          "what": "frame and time for the marker"
+        },
+        {
+          "api": "m.id = i; m.ns = 'detections'",
+          "what": "unique id within the namespace"
+        },
+        {
+          "api": "m.type = Marker.CUBE; m.action = Marker.ADD",
+          "what": "make it an added cube"
+        },
+        {
+          "api": "m.scale.x/y/z = 1.0  # non-zero",
+          "what": "box dimensions must be non-zero"
+        },
+        {
+          "api": "m.color.a = 1.0  # alpha > 0",
+          "what": "alpha > 0 or it's invisible"
+        },
+        {
+          "api": "arr.markers.append(m); self.pub.publish(arr)",
+          "what": "collect markers and publish array"
+        }
+      ]
     },
     {
       "id": "module-13",
@@ -765,7 +1161,41 @@
         ],
         "timeoutSeconds": 20,
         "harnessNotes": "The harness launches the student node, then runs a probe that publishes one synthetic sensor_msgs/msg/LaserScan on '/scan' with angle_min=-1.57, angle_max=1.57, range_min=0.05, range_max=10.0, and a ranges array padded with large values (e.g. 5.0) plus a planted close reading of 0.30 m (and some inf entries to verify filtering). The probe subscribes to '/cmd_vel' as geometry_msgs/msg/Twist. It asserts the emergency_stop node exists and subscribes to /scan, then that within the timeout at least one Twist arrives on /cmd_vel with all six components equal to 0.0 (zero e-stop). A negative phase (publishing a scan whose closest valid range is 2.0 m) may optionally confirm no Twist is published when nothing is near."
-      }
+      },
+      "quickReference": [
+        {
+          "api": "import math",
+          "what": "for math.isfinite range filtering"
+        },
+        {
+          "api": "from sensor_msgs.msg import LaserScan",
+          "what": "1D sweep of distance readings"
+        },
+        {
+          "api": "from geometry_msgs.msg import Twist",
+          "what": "velocity command message type"
+        },
+        {
+          "api": "self.create_publisher(Twist, '/cmd_vel', 10)",
+          "what": "publish drive commands"
+        },
+        {
+          "api": "self.create_subscription(LaserScan, '/scan', self.on_scan, 10)",
+          "what": "subscribe to the laser scan"
+        },
+        {
+          "api": "[r for r in msg.ranges if math.isfinite(r) and msg.range_min <= r <= msg.range_max]",
+          "what": "keep only valid finite ranges"
+        },
+        {
+          "api": "closest = min(valid) if valid else float('inf')",
+          "what": "find the nearest valid distance"
+        },
+        {
+          "api": "stop = Twist(); self.cmd_pub.publish(stop)",
+          "what": "publish zero Twist as e-stop"
+        }
+      ]
     },
     {
       "id": "module-14",
@@ -822,7 +1252,33 @@
         ],
         "timeoutSeconds": 20,
         "harnessNotes": "The harness runs a simulated ros2 CLI environment with a single pre-registered topic /turtle1/cmd_vel of type geometry_msgs/msg/Twist (no real DDS needed; a fixture maps topic->type and type->definition). Each typed line is captured and matched against the ordered regex steps. Step 1 must be exactly 'ros2 topic type /turtle1/cmd_vel'. Step 2 must be 'ros2 interface show geometry_msgs/msg/Twist' (the type string the simulator returned for step 1; the matcher can also accept the type echoed from step 1's stdout). Step 3 must be a 'ros2 topic pub' to /turtle1/cmd_vel with type geometry_msgs/msg/Twist and a non-empty YAML payload, with optional --once or -1 single-shot flag. Commands must appear in this relative order; extra exploratory commands (ros2 topic list, echo) between them are ignored. The simulator returns canned realistic stdout for each command so the user can read the type and fields just like a live system."
-      }
+      },
+      "quickReference": [
+        {
+          "api": "ros2 topic type /turtle1/cmd_vel",
+          "what": "show a topic's message type"
+        },
+        {
+          "api": "ros2 interface show geometry_msgs/msg/Twist",
+          "what": "show the message fields"
+        },
+        {
+          "api": "ros2 topic pub --once /turtle1/cmd_vel geometry_msgs/msg/Twist '{linear: {x: 2.0}, angular: {z: 1.8}}'",
+          "what": "publish one test message (YAML payload)"
+        },
+        {
+          "api": "ros2 topic echo /turtle1/cmd_vel",
+          "what": "print messages as they arrive"
+        },
+        {
+          "api": "ros2 topic hz /turtle1/cmd_vel",
+          "what": "measure a topic's publish rate"
+        },
+        {
+          "api": "ros2 node list / ros2 node info <node>",
+          "what": "see nodes and their connections"
+        }
+      ]
     }
   ]
 }

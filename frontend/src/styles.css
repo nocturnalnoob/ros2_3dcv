@@ -61,6 +61,18 @@ button:disabled { opacity: 0.5; cursor: default; }
 .exercise-box { margin-top: 20px; padding: 14px; border: 1px solid var(--border);
   border-radius: 8px; background: var(--panel); }
 .passdef { font-size: 13px; opacity: 0.85; }
+
+/* Quick-reference cheat sheet */
+.cheatsheet { margin: 14px 0; border: 1px solid var(--border);
+  border-radius: 8px; background: var(--panel); padding: 10px 14px; }
+.cheatsheet summary { cursor: pointer; font-weight: 600; font-size: 14px; }
+.cheatsheet dl { margin: 10px 0 2px; }
+.cheat-row { display: flex; flex-direction: column; gap: 1px; padding: 5px 0;
+  border-top: 1px solid var(--border); }
+.cheat-row:first-child { border-top: none; }
+.cheat-row dt code { background: var(--code-bg); font-size: 12px;
+  padding: 2px 6px; border-radius: 4px; display: inline-block; word-break: break-word; }
+.cheat-row dd { margin: 2px 0 0; font-size: 12px; opacity: 0.75; }
 .back { display: inline-block; margin-bottom: 12px; font-size: 13px; }
 
 .work-pane { display: flex; flex-direction: column; min-width: 0; }

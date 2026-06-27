@@ -21,6 +21,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import shutil
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -61,6 +62,16 @@ async def run_in_sandbox(
     image = SANDBOX_IMAGE.get(distro, SANDBOX_IMAGE["humble"])
     domain_id = _next_domain_id()
 
+    # The grader shells out to the `docker` CLI. If it isn't on PATH (api image
+    # built without it) fail with a clear message instead of a 500.
+    if shutil.which("docker") is None:
+        return SandboxResult(
+            stdout="",
+            stderr="Docker CLI not found in the API container. Rebuild it with "
+                   "`docker compose build api` (it needs the docker client to "
+                   "launch the grading sandbox).",
+            verdict_json=None, timed_out=False, exit_code=127)
+
     with tempfile.TemporaryDirectory(prefix="ros2_3dcv_") as scratch:
         job = Path(scratch)
         (job / "solution.py").write_text(student_code)
@@ -70,11 +81,18 @@ async def run_in_sandbox(
             (job / name).write_text(content)
 
         cmd = _container_command(image, job, domain_id, module_id, grade)
-        proc = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+        except FileNotFoundError:
+            return SandboxResult(
+                stdout="",
+                stderr="Could not launch `docker`. Ensure the docker CLI is "
+                       "installed in the API container and the socket is mounted.",
+                verdict_json=None, timed_out=False, exit_code=127)
         timed_out = False
         try:
             out_b, err_b = await asyncio.wait_for(
@@ -86,6 +104,15 @@ async def run_in_sandbox(
 
         stdout = _truncate(out_b.decode(errors="replace"))
         stderr = _truncate(err_b.decode(errors="replace"))
+
+        # `docker run` exits 125 when the sandbox image hasn't been built yet.
+        if proc.returncode == 125 and (
+                "Unable to find image" in stderr or "No such image" in stderr):
+            stderr += (
+                f"\n\nThe sandbox image '{image}' is not built yet. Build it once:\n"
+                "  cd backend/sandbox_image && make build\n"
+                "(this downloads ROS 2 — a few GB — and is required for Run/Submit).")
+
         verdict = _extract_verdict(stdout)
         return SandboxResult(
             stdout=_strip_verdict(stdout),

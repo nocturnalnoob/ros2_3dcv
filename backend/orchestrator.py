@@ -46,19 +46,29 @@ async def run_only(req: RunRequest) -> Verdict:
     if err:
         return Verdict(passed=False, stderr=err, error=err)
     started = time.monotonic()
-    res = await run_in_sandbox(
-        student_code=req.code,
-        module_id=req.moduleId,
-        distro=req.distro,
-        timeout_s=15,
-        grade=False,
-    )
+    try:
+        res = await run_in_sandbox(
+            student_code=req.code,
+            module_id=req.moduleId,
+            distro=req.distro,
+            timeout_s=15,
+            grade=False,
+        )
+    except Exception as e:  # noqa: BLE001 — never 500 the UI
+        return Verdict(passed=False, error=f"Sandbox error: {type(e).__name__}: {e}")
+
+    error = None
+    if res.timed_out:
+        error = "Execution timed out."
+    elif res.exit_code != 0:
+        # surface the sandbox's own guidance (docker missing / image not built)
+        error = res.stderr.strip() or f"Exited with code {res.exit_code}."
     return Verdict(
         passed=res.exit_code == 0 and not res.timed_out,
         stdout=res.stdout,
         stderr=res.stderr,
         durationMs=int((time.monotonic() - started) * 1000),
-        error="Execution timed out." if res.timed_out else None,
+        error=error,
     )
 
 
@@ -68,16 +78,24 @@ async def grade_submission(req: SubmitRequest, module: Module) -> Verdict:
         return Verdict(passed=False, stderr=err, error=err)
 
     started = time.monotonic()
-    res = await run_in_sandbox(
-        student_code=req.code,
-        module_id=req.moduleId,
-        distro=req.distro,
-        timeout_s=module.verification.timeoutSeconds,
-        verification=module.verification.model_dump(),
-        support_files=module.exercise.supportFiles,
-        grade=True,
-    )
+    try:
+        res = await run_in_sandbox(
+            student_code=req.code,
+            module_id=req.moduleId,
+            distro=req.distro,
+            timeout_s=module.verification.timeoutSeconds,
+            verification=module.verification.model_dump(),
+            support_files=module.exercise.supportFiles,
+            grade=True,
+        )
+    except Exception as e:  # noqa: BLE001 — never 500 the UI
+        return Verdict(passed=False, error=f"Sandbox error: {type(e).__name__}: {e}")
     elapsed = int((time.monotonic() - started) * 1000)
+
+    # docker missing / image not built etc. — no verdict, surface the guidance.
+    if res.verdict_json is None and res.exit_code == 127:
+        return Verdict(passed=False, stdout=res.stdout, stderr=res.stderr,
+                       durationMs=elapsed, error=res.stderr.strip())
 
     if res.timed_out:
         return Verdict(
