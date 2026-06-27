@@ -32,6 +32,17 @@ SANDBOX_IMAGE = {
 }
 _DOMAIN_COUNTER = os.getpid() % 100
 
+# When the API itself runs inside a container, the sandbox it launches via the
+# host docker daemon is a SIBLING container — so the `-v` bind mount path must
+# be a path the HOST can see, not one inside the API container. We solve this
+# with a volume shared between host and API at matching paths:
+#   * CONTAINER_JOBS_DIR — where the API writes job files (inside the API container)
+#   * HOST_JOBS_DIR      — the same volume's path on the HOST (passed to `docker -v`)
+# docker-compose.yml sets both. When unset (API running directly on the host),
+# we fall back to the system temp dir and use the path as-is.
+CONTAINER_JOBS_DIR = os.environ.get("CONTAINER_JOBS_DIR")
+HOST_JOBS_DIR = os.environ.get("HOST_JOBS_DIR")
+
 
 @dataclass
 class SandboxResult:
@@ -72,7 +83,7 @@ async def run_in_sandbox(
                    "launch the grading sandbox).",
             verdict_json=None, timed_out=False, exit_code=127)
 
-    with tempfile.TemporaryDirectory(prefix="ros2_3dcv_") as scratch:
+    with tempfile.TemporaryDirectory(prefix="ros2_3dcv_", dir=CONTAINER_JOBS_DIR) as scratch:
         job = Path(scratch)
         (job / "solution.py").write_text(student_code)
         if verification is not None:
@@ -80,7 +91,14 @@ async def run_in_sandbox(
         for name, content in support_files.items():
             (job / name).write_text(content)
 
-        cmd = _container_command(image, job, domain_id, module_id, grade)
+        # Path the host docker daemon must mount. In compose mode the job lives
+        # in the shared volume, so translate the container path to the host one.
+        if CONTAINER_JOBS_DIR and HOST_JOBS_DIR:
+            host_job_path = os.path.join(HOST_JOBS_DIR, job.name)
+        else:
+            host_job_path = str(job)
+
+        cmd = _container_command(image, host_job_path, domain_id, module_id, grade)
         try:
             proc = await asyncio.create_subprocess_exec(
                 *cmd,
@@ -123,12 +141,13 @@ async def run_in_sandbox(
         )
 
 
-def _container_command(image: str, job: Path, domain_id: int,
+def _container_command(image: str, host_job_path: str, domain_id: int,
                        module_id: str, grade: bool) -> list[str]:
     """Locked-down container invocation. Swap docker→gVisor/podman per
     deployment; the flags encode the security model. The image ENTRYPOINT is
     the grading harness; for a plain "Run" we override it to just exec the
-    student file so the user sees raw output."""
+    student file so the user sees raw output. host_job_path must be a path the
+    docker daemon (host) can see — see HOST_JOBS_DIR above."""
     base = [
         "docker", "run", "--rm",
         "--network", "none",
@@ -137,7 +156,7 @@ def _container_command(image: str, job: Path, domain_id: int,
         "--pids-limit", "256",
         "--memory", "512m", "--cpus", "1.0",
         "-e", f"ROS_DOMAIN_ID={domain_id}",
-        "-v", f"{job}:/job:rw",
+        "-v", f"{host_job_path}:/job:rw",
     ]
     if grade:
         return [*base, image, module_id]

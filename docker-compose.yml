@@ -19,9 +19,14 @@ services:
     volumes:
       - ./curriculum:/app/curriculum:ro
       - /var/run/docker.sock:/var/run/docker.sock  # spawn sandbox containers
+      # Job files live on a volume the HOST can also see, so the sibling sandbox
+      # container can bind-mount them (see HOST_JOBS_DIR in backend/sandbox.py).
+      - ./.sandbox-jobs:/sandbox-jobs
     environment:
       - SANDBOX_DISTRO=humble
       - CURRICULUM_PATH=/app/curriculum/curriculum.json
+      - CONTAINER_JOBS_DIR=/sandbox-jobs
+      - HOST_JOBS_DIR=${PWD}/.sandbox-jobs
 
   web:
     build:

@@ -216,3 +216,6 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# sandbox grading scratch (created at runtime by docker compose)
+.sandbox-jobs/

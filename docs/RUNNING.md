@@ -40,13 +40,39 @@ module-8: PASSED ✅
 
 ## 3. Run the full web app (optional)
 ```bash
-# build the sandbox image first (step 1), then:
+# build the sandbox image first (step 1), then, from the repo root:
 docker compose up --build
 # web:  http://localhost:5173    api: http://localhost:8000
 ```
+Run it **from the repo root** — compose uses `${PWD}` to share the job
+directory between the host and the API container (see below).
+
 The API spawns one sandbox container per submission, so it mounts the host
-Docker socket (docker-out-of-docker). In production, replace this with a
-dedicated locked-down worker pool (gVisor/Firecracker) — see ARCHITECTURE §4.
+Docker socket (docker-out-of-docker). Two things must be true for grading to
+work, and the UI now tells you clearly if they aren't:
+
+1. **The sandbox image is built** (step 1). Otherwise: *"The sandbox image
+   '…' is not built yet."*
+2. **The API image has the docker CLI.** It does (`backend/Dockerfile` installs
+   `docker.io`), but if you see *"Docker CLI not found in the API container"*
+   your running image is stale — rebuild it: `docker compose build api`.
+
+**Why the shared `.sandbox-jobs/` volume?** The API runs in a container, but the
+sandbox it launches is a *sibling* container on the host daemon — so the bind
+mount must use a path the **host** can see, not one inside the API container.
+Compose mounts `./.sandbox-jobs` into the API at `/sandbox-jobs` and passes both
+paths (`CONTAINER_JOBS_DIR`, `HOST_JOBS_DIR=${PWD}/.sandbox-jobs`) so the API
+writes job files there and tells the host daemon the matching host path.
+
+> **Simpler alternative for a solo learner:** skip docker-in-docker entirely —
+> run the API directly on the host (`cd backend && pip install -r requirements.txt
+> && uvicorn main:app`) and the web with `cd frontend && npm install && npm run
+> dev`. Then the API creates job dirs the host daemon can see directly (no shared
+> volume needed) and `docker` is already on your PATH. You still need the sandbox
+> image (step 1). Or skip the web app and just use `grade.py` (step 2).
+
+In production, replace docker-out-of-docker with a dedicated locked-down worker
+pool (gVisor/Firecracker) — see ARCHITECTURE §4.
 
 ## How a submission is graded
 1. `POST /api/submit` → orchestrator writes `solution.py` + `verification.json`
