@@ -91,6 +91,13 @@ async def run_in_sandbox(
         for name, content in support_files.items():
             (job / name).write_text(content)
 
+        # tempfile makes the dir mode 0700 owned by THIS process's user, but the
+        # sandbox runs as the non-root `runner` user (uid 1000) and must be able
+        # to traverse /job and read the files. Open up perms on this throwaway dir.
+        os.chmod(job, 0o755)
+        for f in job.iterdir():
+            os.chmod(f, 0o644)
+
         # Path the host docker daemon must mount. In compose mode the job lives
         # in the shared volume, so translate the container path to the host one.
         if CONTAINER_JOBS_DIR and HOST_JOBS_DIR:
