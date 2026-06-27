@@ -75,6 +75,17 @@ button:disabled { opacity: 0.5; cursor: default; }
 .cheat-row dd { margin: 2px 0 0; font-size: 12px; opacity: 0.75; }
 .back { display: inline-block; margin-bottom: 12px; font-size: 13px; }
 
+/* Hints */
+.hints-box { margin-top: 16px; padding: 14px; border: 1px solid var(--border);
+  border-radius: 8px; background: var(--panel); }
+.hints-box h3 { margin: 0 0 8px; font-size: 15px; }
+.hint-list { margin: 0 0 10px; padding-left: 20px; }
+.hint-list li { font-size: 13px; margin-bottom: 8px; line-height: 1.45; }
+.hint-exhausted { font-size: 12px; opacity: 0.75; margin: 4px 0 10px; }
+.reveal-solution { display: block; margin-top: 10px; font-size: 12px;
+  opacity: 0.7; }
+.reveal-solution:hover { opacity: 1; border-color: var(--fail); color: var(--fail); }
+
 .work-pane { display: flex; flex-direction: column; min-width: 0; }
 .tabs { display: flex; gap: 8px; padding: 8px; border-bottom: 1px solid var(--border); align-items: center; }
 .tabs .spacer { flex: 1; }

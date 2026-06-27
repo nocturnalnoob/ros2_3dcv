@@ -8,6 +8,7 @@ import { useProgress, useTheme } from "../store";
 import { TerminalPane } from "./TerminalPane";
 import { VizPanel } from "./VizPanel";
 import { ThemeToggle } from "./ThemeToggle";
+import { HintsBox } from "./HintsBox";
 
 type Tab = "editor" | "terminal" | "viz";
 
@@ -66,6 +67,12 @@ function WorkbenchInner({ module }: { module: Module }) {
           <p>{module.exercise.prompt}</p>
           <p className="passdef"><strong>Passes when:</strong> {module.verification.humanDescription}</p>
         </div>
+        {module.hints && module.hints.length > 0 && (
+          <HintsBox
+            hints={module.hints}
+            onRevealSolution={() => setCode(module.exercise.solutionCode)}
+          />
+        )}
       </aside>
 
       <main className="work-pane">

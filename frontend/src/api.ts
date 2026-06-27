@@ -26,6 +26,7 @@ export interface Module {
   estimatedMinutes: number;
   learningObjectives: string[];
   quickReference?: QuickRef[];
+  hints?: string[];
   lesson: { markdown: string };
   exercise: Exercise;
   verification: {

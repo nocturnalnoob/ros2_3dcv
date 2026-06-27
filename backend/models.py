@@ -40,6 +40,7 @@ class Module(BaseModel):
     estimatedMinutes: int = 30
     learningObjectives: list[str] = Field(default_factory=list)
     quickReference: list[dict[str, str]] = Field(default_factory=list)
+    hints: list[str] = Field(default_factory=list)
     lesson: dict[str, str]
     exercise: Exercise
     verification: Verification

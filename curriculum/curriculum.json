@@ -94,6 +94,12 @@
           "api": "rclpy.shutdown()",
           "what": "tear down the ROS context"
         }
+      ],
+      "hints": [
+        "Don't worry, every ROS 2 program follows the same little ritual: start the library, make your node, let it run for a moment, then shut down cleanly. Get that skeleton in place first and the rest falls out.",
+        "Your class should inherit from Node, and logging happens through the node itself, not print() -- look for a get_logger() method. In main you'll lean on rclpy's init / spin / destroy / shutdown helpers.",
+        "Inside __init__, first call super().__init__('system_node'), then self.get_logger().info('System initialized'). In main: rclpy.init(args=args), make the node, run it briefly with spin_once, then node.destroy_node() and rclpy.shutdown().",
+        "The two easy slips: the node name string must be exactly 'system_node', and to run briefly use rclpy.spin_once(node, timeout_sec=0.1) (not full spin, which would block forever). Don't forget rclpy.shutdown() at the very end."
       ]
     },
     {
@@ -188,6 +194,12 @@
           "api": "executor.add_node(node); executor.spin()",
           "what": "add nodes and run them together"
         }
+      ],
+      "hints": [
+        "This is just a producer and a consumer sharing one named channel -- the talker shouts messages onto the channel on a steady beat, the listener reacts to each one. You already have the executor wiring in main, so focus on filling in the two classes.",
+        "For the talker you'll need a publisher and a timer; for the listener you'll need a subscription with a callback. The message type is String from std_msgs, and 2 Hz means a timer period of 0.5 seconds.",
+        "In Talker.__init__: self.create_publisher(String, 'chatter', 10) and self.create_timer(0.5, self.tick). In tick(): make a String(), set msg.data, call self.pub.publish(msg). In Listener.__init__: self.create_subscription(String, 'chatter', self.on_msg, 10).",
+        "Two things to check: the subscription callback (self.on_msg) takes the message as an argument and should log it (the grader looks for the text 'I heard:'), and in main you simply call executor.spin() inside the try block to run both nodes together."
       ]
     },
     {
@@ -272,6 +284,12 @@
           "api": "rclpy.spin(node)",
           "what": "keep the server available to clients"
         }
+      ],
+      "hints": [
+        "A service is just a question-and-answer: someone hands you a request with two numbers, you fill in the answer and hand it back. You only need to build the server side; the grader will play the caller.",
+        "In the constructor, advertise the service with a create_service call, and write a handler method. The handler's job is to set the response field and return it. The type is AddTwoInts, already imported for you.",
+        "Use self.create_service(AddTwoInts, 'add_two_ints', self.handle). The handler signature is def handle(self, request, response):, and inside it set response.sum = request.a + request.b, then log it.",
+        "The single most common bug here: you MUST return response at the end of handle (an empty return sends back nothing and the call fails). Also log something containing 'sum=' since the grader checks for that text."
       ]
     },
     {
@@ -365,6 +383,12 @@
           "api": "goal_handle.get_result_async().add_done_callback(self.on_result)",
           "what": "fetch the final result asynchronously"
         }
+      ],
+      "hints": [
+        "Actions are for long jobs you can watch and cancel: you send a goal, then progress updates trickle in, then one final answer arrives. The flow is all callbacks -- you wire them up and let spin() fire them in order, no blocking. The server is provided; you write the client.",
+        "Create an ActionClient in __init__. In send_goal: wait for the server, build a goal, send it asynchronously while attaching a feedback callback, then attach a done-callback to handle the server's accept/reject response.",
+        "Use ActionClient(self, Fibonacci, 'fibonacci'); self._client.wait_for_server(); goal = Fibonacci.Goal(); goal.order = order. Then future = self._client.send_goal_async(goal, feedback_callback=self.on_feedback) and future.add_done_callback(self.on_goal_response).",
+        "Watch the nested fields: in on_feedback read feedback_msg.feedback.partial_sequence (log it as a list); in on_goal_response check goal_handle.accepted, and if accepted call goal_handle.get_result_async().add_done_callback(self.on_result); in on_result read future.result().result.sequence. Log feedback as 'Feedback: [...]' and the result as 'Result: [...]' so the grader can see them."
       ]
     },
     {
@@ -451,6 +475,12 @@
           "api": "return SetParametersResult(successful=True)",
           "what": "accept the parameter change"
         }
+      ],
+      "hints": [
+        "Think of a parameter as a live settings knob the outside world can turn while your node runs. The trick is to re-read its value every loop instead of caching it once, so a change made externally actually shows up. The main() lifecycle is already done for you.",
+        "Three pieces in __init__: declare the parameter with a default, register a callback for when it gets set, and start a timer. In the timer read the current value; in the callback log the new value and return a result object.",
+        "Use self.declare_parameter('max_velocity', 1.0), self.add_on_set_parameters_callback(self.on_param_change), and self.create_timer(0.5, self.loop). In loop(): self.get_parameter('max_velocity').value, then log it. In on_param_change: loop over params, check p.name, log p.value.",
+        "Two details the grader relies on: the loop log must read like 'current max_velocity = 1.0' (and later '... = 2.5' after the change), and the callback must end with return SetParametersResult(successful=True) or the parameter set is rejected."
       ]
     },
     {
@@ -552,6 +582,12 @@
           "api": "out_msg.header = msg.header",
           "what": "preserve timestamp and frame_id"
         }
+      ],
+      "hints": [
+        "This is your old OpenCV grayscale code with two thin adapters bolted on the ends: convert the incoming message into a NumPy image, do the CV you already know, then convert back into a message and publish. The middle is just cv2.",
+        "You need a publisher and a subscription in __init__, and in the callback use the CvBridge methods to go ROS-image -> array and array -> ROS-image, with cv2.cvtColor in between.",
+        "In __init__: self.create_publisher(Image, '/image_filtered', 10) and self.create_subscription(Image, '/image_raw', self.on_image, 10). In on_image: self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8'), then cv2.cvtColor(..., cv2.COLOR_BGR2GRAY), then self.bridge.cv2_to_imgmsg(gray, encoding='mono8').",
+        "Two things people forget: a grayscale (H,W) array must be encoded as 'mono8' (not 'bgr8'), and you must copy the timestamp across with out_msg.header = msg.header before publishing, or the grader's header check fails."
       ]
     },
     {
@@ -634,6 +670,12 @@
           "api": "print(f'Center distance: {center_mm} mm', flush=True)",
           "what": "print exact required output line"
         }
+      ],
+      "hints": [
+        "A depth image is just a grayscale image where the pixel value IS the distance instead of brightness. Decode it to a NumPy array and read one pixel -- the center one. You've indexed NumPy arrays before; this is the same.",
+        "Add a subscription to the depth topic in __init__, and in the callback use CvBridge to decode the message, then index the center pixel. Remember NumPy is [row, col], i.e. [y, x].",
+        "Subscribe with self.create_subscription(Image, '/camera/depth/image_rect_raw', self.on_depth, 10). In on_depth: depth = self.bridge.imgmsg_to_cv2(msg, desired_encoding='16UC1'), then h, w = depth.shape, then read depth[h // 2, w // 2].",
+        "Two gotchas: decode as '16UC1' (16-bit) not '8UC1', and the center is [h//2, w//2] in that order (row first). The output must be the exact line 'Center distance: <N> mm' with an integer -- wrap the value in int(...) and print with flush=True."
       ]
     },
     {
@@ -712,6 +754,12 @@
           "api": "print(f'Points within 1.5 m: {near}', flush=True)",
           "what": "print exact required output line"
         }
+      ],
+      "hints": [
+        "A point cloud is just a bag of 3D points. You loop over them, measure how far each is from the origin, and count the close ones. The scary-looking message is handled for you by a helper -- you only do plain geometry.",
+        "Add a subscription to '/points' in __init__, and in the callback use point_cloud2.read_points to iterate the points, then use math.sqrt for the distance and a counter for the ones within the threshold.",
+        "Subscribe with self.create_subscription(PointCloud2, '/points', self.on_cloud, 10). Iterate with for x, y, z in point_cloud2.read_points(msg, field_names=('x','y','z'), skip_nans=True): and test math.sqrt(x*x + y*y + z*z) <= self.threshold.",
+        "Don't forget skip_nans=True (real sensors emit NaN that would break your math), and the comparison should be <= the threshold so a point right at the boundary counts. Print the exact line 'Points within 1.5 m: <N>' with flush=True."
       ]
     },
     {
@@ -826,6 +874,12 @@
           "api": "out.pose.orientation.w = 1.0  # x=y=z=0.0",
           "what": "identity normalized quaternion"
         }
+      ],
+      "hints": [
+        "This is the same subscribe-process-publish shape as the grayscale node, but the output message is a pose (a position plus an orientation) instead of an image. The 'feature extraction' is faked from the image size, so you just plug numbers into a message.",
+        "Make a PoseStamped publisher and an Image subscription in __init__. In the callback, build a PoseStamped, set its header, position, and orientation fields, and publish it.",
+        "In __init__: self.create_publisher(PoseStamped, '/estimated_pose', 10) and subscribe to '/image_raw'. In on_image: out = PoseStamped(); set out.header.stamp = msg.header.stamp, out.header.frame_id = 'camera_link', out.pose.position.x = msg.width / 1000.0, .y = msg.height / 1000.0, .z = 1.0.",
+        "The classic mistake is leaving the orientation all zeros, which is an invalid quaternion. Set the identity: orientation.x=y=z=0.0 and orientation.w=1.0. Also reuse the image's stamp (msg.header.stamp), not now(), and use float division (/1000.0)."
       ]
     },
     {
@@ -926,6 +980,12 @@
           "api": "self.br.sendTransform(t)  # rotation.w = 1.0",
           "what": "broadcast with identity rotation"
         }
+      ],
+      "hints": [
+        "A transform just says 'where is the child frame relative to the parent, right now' -- and because the camera moves, you re-send it ten times a second with a fresh timestamp each time. Most of the timer math (elapsed time) is already written for you.",
+        "In __init__ create a TransformBroadcaster and a timer. In tick() build a TransformStamped, fill in its stamp, parent/child frames, translation, and rotation, then broadcast it. The position rides a unit circle using cos/sin of the elapsed time.",
+        "Use self.br = TransformBroadcaster(self) and self.create_timer(0.1, self.tick). In tick(): t.header.stamp = now.to_msg(), t.header.frame_id = 'map', t.child_frame_id = 'camera_link', t.transform.translation.x = math.cos(elapsed), .y = math.sin(elapsed), .z = 0.0, then self.br.sendTransform(t).",
+        "The single most common TF2 bug: leaving the rotation quaternion all zeros (invalid). Set the identity rotation with t.transform.rotation.w = 1.0 (x, y, z stay 0.0). Also make sure you actually set the stamp from now -- the grader checks the transform changes over time and has a valid quaternion."
       ]
     },
     {
@@ -1019,6 +1079,12 @@
           "api": "writer.write('/chatter', serialize_message(msg), stamp_ns)",
           "what": "write serialized message with timestamp"
         }
+      ],
+      "hints": [
+        "Writing a bag is like setting up a little database: say where it lives, declare the one 'table' (topic) you'll write, then write one row (message). There's no live publishing here -- it's all in code, four small objects from rosbag2_py.",
+        "You need StorageOptions (where + backend), ConverterOptions (the format), a SequentialWriter you open, a TopicMetadata you register, and finally a serialized write. The serialize helper is already imported.",
+        "Build rosbag2_py.StorageOptions(uri=bag_uri, storage_id='sqlite3') and rosbag2_py.ConverterOptions(input_serialization_format='cdr', output_serialization_format='cdr'); then writer.open(storage_options, converter_options); register rosbag2_py.TopicMetadata(name='/chatter', type='std_msgs/msg/String', serialization_format='cdr') with writer.create_topic(...).",
+        "The writer doesn't take the Python message directly -- it needs raw bytes. Call writer.write('/chatter', serialize_message(msg), stamp_ns), and make sure the topic name in write() exactly matches the one you registered with create_topic(), or it fails."
       ]
     },
     {
@@ -1111,6 +1177,12 @@
           "api": "arr.markers.append(m); self.pub.publish(arr)",
           "what": "collect markers and publish array"
         }
+      ],
+      "hints": [
+        "You're not drawing the boxes yourself -- you publish a message describing three cubes and a viewer renders them. The boxes' positions are already given in self.boxes; your job is to turn each into a properly filled Marker. Most of the loop scaffold is there.",
+        "In __init__ make a MarkerArray publisher and a 2 Hz timer. Inside the loop, for each box set the marker's id, type, action, pose, scale, and color, then append it; after the loop, publish the array.",
+        "Use self.create_publisher(MarkerArray, '/detected_boxes', 10) and self.create_timer(0.5, self.publish_boxes). Per marker: m.id = i, m.type = Marker.CUBE, m.action = Marker.ADD, set pose.position from box and pose.orientation.w = 1.0, then arr.markers.append(m) and self.pub.publish(arr).",
+        "Three things make markers invisible if you skip them: scale.x/y/z must all be non-zero, color.a must be > 0 (e.g. 1.0), and each marker's id must be unique (use i from enumerate) or later boxes overwrite earlier ones. Set at least one color channel too so it's visible."
       ]
     },
     {
@@ -1195,6 +1267,12 @@
           "api": "stop = Twist(); self.cmd_pub.publish(stop)",
           "what": "publish zero Twist as e-stop"
         }
+      ],
+      "hints": [
+        "This is a simple safety reflex: look at the laser distances, find the nearest real one, and if something's too close, slam the brakes by commanding zero velocity. It's a subscriber plus a publisher -- the same pattern you've done before.",
+        "In __init__ make a Twist publisher on '/cmd_vel' and a LaserScan subscription on '/scan'. In the callback, filter the ranges to valid finite values, take the minimum, and publish a zero Twist if it's under the threshold.",
+        "Use self.cmd_pub = self.create_publisher(Twist, '/cmd_vel', 10) and self.create_subscription(LaserScan, '/scan', self.on_scan, 10). Build valid = [r for r in msg.ranges if math.isfinite(r) and msg.range_min <= r <= msg.range_max], then closest = min(valid) if valid else float('inf').",
+        "The trap is calling min() on the raw ranges: real scans contain inf/nan and out-of-range values that would poison it -- that's why you filter with math.isfinite first. When closest < self.THRESHOLD, publish a Twist with all six fields at 0.0 (a fresh Twist() is already all zeros)."
       ]
     },
     {
@@ -1278,6 +1356,12 @@
           "api": "ros2 node list / ros2 node info <node>",
           "what": "see nodes and their connections"
         }
+      ],
+      "hints": [
+        "When a topic is a mystery, you interrogate the running system in three moves: first ask what kind of data it carries, then ask what that data looks like inside, then send it one test message. No code -- just three ros2 commands in order.",
+        "The three commands are 'ros2 topic type', 'ros2 interface show', and 'ros2 topic pub'. Step 1 takes the topic name; step 2 takes the TYPE string that step 1 printed (a common mix-up is passing the topic name again); step 3 publishes one message.",
+        "Step 1: ros2 topic type /turtle1/cmd_vel -- this tells you the type is geometry_msgs/msg/Twist. Step 2: ros2 interface show geometry_msgs/msg/Twist to see its fields. Step 3 is a single-shot publish to the topic with that type and a YAML payload.",
+        "For step 3, include the single-shot flag (--once) or it will publish forever, and supply a YAML body, for example: ros2 topic pub --once /turtle1/cmd_vel geometry_msgs/msg/Twist \"{linear: {x: 2.0}, angular: {z: 1.8}}\". Run the three lines in that exact order."
       ]
     }
   ]

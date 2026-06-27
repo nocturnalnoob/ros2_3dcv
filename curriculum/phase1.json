@@ -74,6 +74,12 @@
         "api": "rclpy.shutdown()",
         "what": "tear down the ROS context"
       }
+    ],
+    "hints": [
+      "Don't worry, every ROS 2 program follows the same little ritual: start the library, make your node, let it run for a moment, then shut down cleanly. Get that skeleton in place first and the rest falls out.",
+      "Your class should inherit from Node, and logging happens through the node itself, not print() -- look for a get_logger() method. In main you'll lean on rclpy's init / spin / destroy / shutdown helpers.",
+      "Inside __init__, first call super().__init__('system_node'), then self.get_logger().info('System initialized'). In main: rclpy.init(args=args), make the node, run it briefly with spin_once, then node.destroy_node() and rclpy.shutdown().",
+      "The two easy slips: the node name string must be exactly 'system_node', and to run briefly use rclpy.spin_once(node, timeout_sec=0.1) (not full spin, which would block forever). Don't forget rclpy.shutdown() at the very end."
     ]
   },
   {
@@ -168,6 +174,12 @@
         "api": "executor.add_node(node); executor.spin()",
         "what": "add nodes and run them together"
       }
+    ],
+    "hints": [
+      "This is just a producer and a consumer sharing one named channel -- the talker shouts messages onto the channel on a steady beat, the listener reacts to each one. You already have the executor wiring in main, so focus on filling in the two classes.",
+      "For the talker you'll need a publisher and a timer; for the listener you'll need a subscription with a callback. The message type is String from std_msgs, and 2 Hz means a timer period of 0.5 seconds.",
+      "In Talker.__init__: self.create_publisher(String, 'chatter', 10) and self.create_timer(0.5, self.tick). In tick(): make a String(), set msg.data, call self.pub.publish(msg). In Listener.__init__: self.create_subscription(String, 'chatter', self.on_msg, 10).",
+      "Two things to check: the subscription callback (self.on_msg) takes the message as an argument and should log it (the grader looks for the text 'I heard:'), and in main you simply call executor.spin() inside the try block to run both nodes together."
     ]
   },
   {
@@ -252,6 +264,12 @@
         "api": "rclpy.spin(node)",
         "what": "keep the server available to clients"
       }
+    ],
+    "hints": [
+      "A service is just a question-and-answer: someone hands you a request with two numbers, you fill in the answer and hand it back. You only need to build the server side; the grader will play the caller.",
+      "In the constructor, advertise the service with a create_service call, and write a handler method. The handler's job is to set the response field and return it. The type is AddTwoInts, already imported for you.",
+      "Use self.create_service(AddTwoInts, 'add_two_ints', self.handle). The handler signature is def handle(self, request, response):, and inside it set response.sum = request.a + request.b, then log it.",
+      "The single most common bug here: you MUST return response at the end of handle (an empty return sends back nothing and the call fails). Also log something containing 'sum=' since the grader checks for that text."
     ]
   },
   {
@@ -345,6 +363,12 @@
         "api": "goal_handle.get_result_async().add_done_callback(self.on_result)",
         "what": "fetch the final result asynchronously"
       }
+    ],
+    "hints": [
+      "Actions are for long jobs you can watch and cancel: you send a goal, then progress updates trickle in, then one final answer arrives. The flow is all callbacks -- you wire them up and let spin() fire them in order, no blocking. The server is provided; you write the client.",
+      "Create an ActionClient in __init__. In send_goal: wait for the server, build a goal, send it asynchronously while attaching a feedback callback, then attach a done-callback to handle the server's accept/reject response.",
+      "Use ActionClient(self, Fibonacci, 'fibonacci'); self._client.wait_for_server(); goal = Fibonacci.Goal(); goal.order = order. Then future = self._client.send_goal_async(goal, feedback_callback=self.on_feedback) and future.add_done_callback(self.on_goal_response).",
+      "Watch the nested fields: in on_feedback read feedback_msg.feedback.partial_sequence (log it as a list); in on_goal_response check goal_handle.accepted, and if accepted call goal_handle.get_result_async().add_done_callback(self.on_result); in on_result read future.result().result.sequence. Log feedback as 'Feedback: [...]' and the result as 'Result: [...]' so the grader can see them."
     ]
   },
   {
@@ -431,6 +455,12 @@
         "api": "return SetParametersResult(successful=True)",
         "what": "accept the parameter change"
       }
+    ],
+    "hints": [
+      "Think of a parameter as a live settings knob the outside world can turn while your node runs. The trick is to re-read its value every loop instead of caching it once, so a change made externally actually shows up. The main() lifecycle is already done for you.",
+      "Three pieces in __init__: declare the parameter with a default, register a callback for when it gets set, and start a timer. In the timer read the current value; in the callback log the new value and return a result object.",
+      "Use self.declare_parameter('max_velocity', 1.0), self.add_on_set_parameters_callback(self.on_param_change), and self.create_timer(0.5, self.loop). In loop(): self.get_parameter('max_velocity').value, then log it. In on_param_change: loop over params, check p.name, log p.value.",
+      "Two details the grader relies on: the loop log must read like 'current max_velocity = 1.0' (and later '... = 2.5' after the change), and the callback must end with return SetParametersResult(successful=True) or the parameter set is rejected."
     ]
   }
 ]

@@ -97,6 +97,12 @@
         "api": "self.br.sendTransform(t)  # rotation.w = 1.0",
         "what": "broadcast with identity rotation"
       }
+    ],
+    "hints": [
+      "A transform just says 'where is the child frame relative to the parent, right now' -- and because the camera moves, you re-send it ten times a second with a fresh timestamp each time. Most of the timer math (elapsed time) is already written for you.",
+      "In __init__ create a TransformBroadcaster and a timer. In tick() build a TransformStamped, fill in its stamp, parent/child frames, translation, and rotation, then broadcast it. The position rides a unit circle using cos/sin of the elapsed time.",
+      "Use self.br = TransformBroadcaster(self) and self.create_timer(0.1, self.tick). In tick(): t.header.stamp = now.to_msg(), t.header.frame_id = 'map', t.child_frame_id = 'camera_link', t.transform.translation.x = math.cos(elapsed), .y = math.sin(elapsed), .z = 0.0, then self.br.sendTransform(t).",
+      "The single most common TF2 bug: leaving the rotation quaternion all zeros (invalid). Set the identity rotation with t.transform.rotation.w = 1.0 (x, y, z stay 0.0). Also make sure you actually set the stamp from now -- the grader checks the transform changes over time and has a valid quaternion."
     ]
   },
   {
@@ -190,6 +196,12 @@
         "api": "writer.write('/chatter', serialize_message(msg), stamp_ns)",
         "what": "write serialized message with timestamp"
       }
+    ],
+    "hints": [
+      "Writing a bag is like setting up a little database: say where it lives, declare the one 'table' (topic) you'll write, then write one row (message). There's no live publishing here -- it's all in code, four small objects from rosbag2_py.",
+      "You need StorageOptions (where + backend), ConverterOptions (the format), a SequentialWriter you open, a TopicMetadata you register, and finally a serialized write. The serialize helper is already imported.",
+      "Build rosbag2_py.StorageOptions(uri=bag_uri, storage_id='sqlite3') and rosbag2_py.ConverterOptions(input_serialization_format='cdr', output_serialization_format='cdr'); then writer.open(storage_options, converter_options); register rosbag2_py.TopicMetadata(name='/chatter', type='std_msgs/msg/String', serialization_format='cdr') with writer.create_topic(...).",
+      "The writer doesn't take the Python message directly -- it needs raw bytes. Call writer.write('/chatter', serialize_message(msg), stamp_ns), and make sure the topic name in write() exactly matches the one you registered with create_topic(), or it fails."
     ]
   },
   {
@@ -282,6 +294,12 @@
         "api": "arr.markers.append(m); self.pub.publish(arr)",
         "what": "collect markers and publish array"
       }
+    ],
+    "hints": [
+      "You're not drawing the boxes yourself -- you publish a message describing three cubes and a viewer renders them. The boxes' positions are already given in self.boxes; your job is to turn each into a properly filled Marker. Most of the loop scaffold is there.",
+      "In __init__ make a MarkerArray publisher and a 2 Hz timer. Inside the loop, for each box set the marker's id, type, action, pose, scale, and color, then append it; after the loop, publish the array.",
+      "Use self.create_publisher(MarkerArray, '/detected_boxes', 10) and self.create_timer(0.5, self.publish_boxes). Per marker: m.id = i, m.type = Marker.CUBE, m.action = Marker.ADD, set pose.position from box and pose.orientation.w = 1.0, then arr.markers.append(m) and self.pub.publish(arr).",
+      "Three things make markers invisible if you skip them: scale.x/y/z must all be non-zero, color.a must be > 0 (e.g. 1.0), and each marker's id must be unique (use i from enumerate) or later boxes overwrite earlier ones. Set at least one color channel too so it's visible."
     ]
   },
   {
@@ -366,6 +384,12 @@
         "api": "stop = Twist(); self.cmd_pub.publish(stop)",
         "what": "publish zero Twist as e-stop"
       }
+    ],
+    "hints": [
+      "This is a simple safety reflex: look at the laser distances, find the nearest real one, and if something's too close, slam the brakes by commanding zero velocity. It's a subscriber plus a publisher -- the same pattern you've done before.",
+      "In __init__ make a Twist publisher on '/cmd_vel' and a LaserScan subscription on '/scan'. In the callback, filter the ranges to valid finite values, take the minimum, and publish a zero Twist if it's under the threshold.",
+      "Use self.cmd_pub = self.create_publisher(Twist, '/cmd_vel', 10) and self.create_subscription(LaserScan, '/scan', self.on_scan, 10). Build valid = [r for r in msg.ranges if math.isfinite(r) and msg.range_min <= r <= msg.range_max], then closest = min(valid) if valid else float('inf').",
+      "The trap is calling min() on the raw ranges: real scans contain inf/nan and out-of-range values that would poison it -- that's why you filter with math.isfinite first. When closest < self.THRESHOLD, publish a Twist with all six fields at 0.0 (a fresh Twist() is already all zeros)."
     ]
   },
   {
@@ -449,6 +473,12 @@
         "api": "ros2 node list / ros2 node info <node>",
         "what": "see nodes and their connections"
       }
+    ],
+    "hints": [
+      "When a topic is a mystery, you interrogate the running system in three moves: first ask what kind of data it carries, then ask what that data looks like inside, then send it one test message. No code -- just three ros2 commands in order.",
+      "The three commands are 'ros2 topic type', 'ros2 interface show', and 'ros2 topic pub'. Step 1 takes the topic name; step 2 takes the TYPE string that step 1 printed (a common mix-up is passing the topic name again); step 3 publishes one message.",
+      "Step 1: ros2 topic type /turtle1/cmd_vel -- this tells you the type is geometry_msgs/msg/Twist. Step 2: ros2 interface show geometry_msgs/msg/Twist to see its fields. Step 3 is a single-shot publish to the topic with that type and a YAML payload.",
+      "For step 3, include the single-shot flag (--once) or it will publish forever, and supply a YAML body, for example: ros2 topic pub --once /turtle1/cmd_vel geometry_msgs/msg/Twist \"{linear: {x: 2.0}, angular: {z: 1.8}}\". Run the three lines in that exact order."
     ]
   }
 ]

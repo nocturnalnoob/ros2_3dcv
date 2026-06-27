@@ -98,6 +98,12 @@
         "api": "out_msg.header = msg.header",
         "what": "preserve timestamp and frame_id"
       }
+    ],
+    "hints": [
+      "This is your old OpenCV grayscale code with two thin adapters bolted on the ends: convert the incoming message into a NumPy image, do the CV you already know, then convert back into a message and publish. The middle is just cv2.",
+      "You need a publisher and a subscription in __init__, and in the callback use the CvBridge methods to go ROS-image -> array and array -> ROS-image, with cv2.cvtColor in between.",
+      "In __init__: self.create_publisher(Image, '/image_filtered', 10) and self.create_subscription(Image, '/image_raw', self.on_image, 10). In on_image: self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8'), then cv2.cvtColor(..., cv2.COLOR_BGR2GRAY), then self.bridge.cv2_to_imgmsg(gray, encoding='mono8').",
+      "Two things people forget: a grayscale (H,W) array must be encoded as 'mono8' (not 'bgr8'), and you must copy the timestamp across with out_msg.header = msg.header before publishing, or the grader's header check fails."
     ]
   },
   {
@@ -180,6 +186,12 @@
         "api": "print(f'Center distance: {center_mm} mm', flush=True)",
         "what": "print exact required output line"
       }
+    ],
+    "hints": [
+      "A depth image is just a grayscale image where the pixel value IS the distance instead of brightness. Decode it to a NumPy array and read one pixel -- the center one. You've indexed NumPy arrays before; this is the same.",
+      "Add a subscription to the depth topic in __init__, and in the callback use CvBridge to decode the message, then index the center pixel. Remember NumPy is [row, col], i.e. [y, x].",
+      "Subscribe with self.create_subscription(Image, '/camera/depth/image_rect_raw', self.on_depth, 10). In on_depth: depth = self.bridge.imgmsg_to_cv2(msg, desired_encoding='16UC1'), then h, w = depth.shape, then read depth[h // 2, w // 2].",
+      "Two gotchas: decode as '16UC1' (16-bit) not '8UC1', and the center is [h//2, w//2] in that order (row first). The output must be the exact line 'Center distance: <N> mm' with an integer -- wrap the value in int(...) and print with flush=True."
     ]
   },
   {
@@ -258,6 +270,12 @@
         "api": "print(f'Points within 1.5 m: {near}', flush=True)",
         "what": "print exact required output line"
       }
+    ],
+    "hints": [
+      "A point cloud is just a bag of 3D points. You loop over them, measure how far each is from the origin, and count the close ones. The scary-looking message is handled for you by a helper -- you only do plain geometry.",
+      "Add a subscription to '/points' in __init__, and in the callback use point_cloud2.read_points to iterate the points, then use math.sqrt for the distance and a counter for the ones within the threshold.",
+      "Subscribe with self.create_subscription(PointCloud2, '/points', self.on_cloud, 10). Iterate with for x, y, z in point_cloud2.read_points(msg, field_names=('x','y','z'), skip_nans=True): and test math.sqrt(x*x + y*y + z*z) <= self.threshold.",
+      "Don't forget skip_nans=True (real sensors emit NaN that would break your math), and the comparison should be <= the threshold so a point right at the boundary counts. Print the exact line 'Points within 1.5 m: <N>' with flush=True."
     ]
   },
   {
@@ -372,6 +390,12 @@
         "api": "out.pose.orientation.w = 1.0  # x=y=z=0.0",
         "what": "identity normalized quaternion"
       }
+    ],
+    "hints": [
+      "This is the same subscribe-process-publish shape as the grayscale node, but the output message is a pose (a position plus an orientation) instead of an image. The 'feature extraction' is faked from the image size, so you just plug numbers into a message.",
+      "Make a PoseStamped publisher and an Image subscription in __init__. In the callback, build a PoseStamped, set its header, position, and orientation fields, and publish it.",
+      "In __init__: self.create_publisher(PoseStamped, '/estimated_pose', 10) and subscribe to '/image_raw'. In on_image: out = PoseStamped(); set out.header.stamp = msg.header.stamp, out.header.frame_id = 'camera_link', out.pose.position.x = msg.width / 1000.0, .y = msg.height / 1000.0, .z = 1.0.",
+      "The classic mistake is leaving the orientation all zeros, which is an invalid quaternion. Set the identity: orientation.x=y=z=0.0 and orientation.w=1.0. Also reuse the image's stamp (msg.header.stamp), not now(), and use float division (/1000.0)."
     ]
   }
 ]
