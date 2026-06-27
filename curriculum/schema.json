@@ -1,0 +1,54 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ros2_3dcv module",
+  "type": "object",
+  "required": ["id", "phase", "order", "title", "lesson", "exercise", "verification"],
+  "properties": {
+    "id": { "type": "string", "pattern": "^module-[0-9]+$" },
+    "phase": { "type": "integer", "minimum": 1, "maximum": 3 },
+    "order": { "type": "integer", "minimum": 1 },
+    "title": { "type": "string" },
+    "topic": { "type": "string" },
+    "estimatedMinutes": { "type": "integer" },
+    "learningObjectives": { "type": "array", "items": { "type": "string" } },
+    "lesson": {
+      "type": "object",
+      "required": ["markdown"],
+      "properties": { "markdown": { "type": "string" } }
+    },
+    "exercise": {
+      "type": "object",
+      "required": ["prompt", "type", "starterCode", "solutionCode"],
+      "properties": {
+        "prompt": { "type": "string" },
+        "type": { "enum": ["python", "terminal"] },
+        "editorLanguage": { "type": "string" },
+        "starterCode": { "type": "string" },
+        "solutionCode": { "type": "string" },
+        "supportFiles": { "type": "object", "additionalProperties": { "type": "string" } }
+      }
+    },
+    "verification": {
+      "type": "object",
+      "required": ["strategy", "checks"],
+      "properties": {
+        "strategy": { "type": "string" },
+        "humanDescription": { "type": "string" },
+        "timeoutSeconds": { "type": "integer" },
+        "harnessNotes": { "type": "string" },
+        "checks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["kind"],
+            "properties": {
+              "kind": { "type": "string" },
+              "description": { "type": "string" },
+              "params": { "type": "object" }
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,484 @@
+[
+  {
+    "id": "module-10",
+    "phase": 3,
+    "order": 10,
+    "title": "Spatial Transformations (TF2)",
+    "topic": "Tracking how coordinate frames relate to each other over time using the tf2_ros transform system.",
+    "estimatedMinutes": 40,
+    "learningObjectives": [
+      "Explain what a coordinate frame is and why robots need a tree of them.",
+      "Distinguish static transforms from dynamic transforms that change over time.",
+      "Build and stamp a geometry_msgs/msg/TransformStamped message correctly.",
+      "Broadcast a time-varying transform using tf2_ros.TransformBroadcaster from inside a timer callback."
+    ],
+    "lesson": {
+      "markdown": "# Spatial Transformations (TF2)\n\nIn your Stanford 2D CV work you constantly converted between pixel coordinates, camera coordinates, and world coordinates using matrices. ROS 2 does the same thing for a whole robot, but it adds a dimension you never had to worry about in a static image: **time**. A camera mounted on a moving robot is at a different place every millisecond, so the relationship between frames is not one matrix, it is a stream of matrices.\n\n## Frames are just labeled coordinate systems\n\nA *frame* is a named 3D coordinate system. A typical robot has many: `map` (the fixed world), `odom`, `base_link` (the robot body), `camera_link`, `lidar_link`, and so on. Each sensor reports data in its own frame. A LiDAR point is `(x, y, z)` relative to `lidar_link`. To draw that point in the world you need to know where `lidar_link` is relative to `map`.\n\nTF2 organizes all frames into a **tree**: every frame has exactly one parent. To go from any frame to any other, TF2 walks the tree and multiplies the transforms along the path. You never multiply matrices by hand again. You just *publish* the parent-to-child relationships and *ask* TF2 to compute the rest.\n\n## Static vs dynamic transforms\n\nSome relationships never change. The camera is bolted to the robot, so `base_link -> camera_link` is constant. That is a **static transform**, published once. Others change every cycle, like `map -> base_link` as the robot drives around. That is a **dynamic transform**, re-published continuously, each one stamped with the time it was valid for.\n\nThe time stamp is the whole point. If you ask 'where was the camera 0.2 seconds ago?', TF2 interpolates between stamped transforms to answer. Forgetting to set the stamp is the single most common TF2 bug.\n\n## The message: TransformStamped\n\nA dynamic transform is a `geometry_msgs/msg/TransformStamped`:\n\n```python\nfrom geometry_msgs.msg import TransformStamped\n\nt = TransformStamped()\nt.header.stamp = node.get_clock().now().to_msg()\nt.header.frame_id = 'map'          # parent\nt.child_frame_id = 'camera_link'   # child\nt.transform.translation.x = 1.0\nt.transform.translation.y = 0.0\nt.transform.translation.z = 0.0\nt.transform.rotation.w = 1.0       # identity quaternion\n```\n\nNote translation is `x/y/z` and rotation is a **quaternion** `x/y/z/w`. A quaternion of `(0,0,0,1)` means 'no rotation'. Do not leave the quaternion all zeros, that is invalid and TF2 will complain.\n\n## Broadcasting over time\n\nTo publish dynamic transforms you create a `TransformBroadcaster` and call `sendTransform()` on a timer. Here the child frame moves in a circle around the parent, so each tick we recompute the translation from the elapsed time:\n\n```python\nimport math\nfrom tf2_ros import TransformBroadcaster\n\nself.br = TransformBroadcaster(self)\nself.timer = self.create_timer(0.1, self.tick)\n\ndef tick(self):\n    now = self.get_clock().now()\n    elapsed = (now - self.start).nanoseconds * 1e-9\n    t = TransformStamped()\n    t.header.stamp = now.to_msg()\n    t.header.frame_id = 'map'\n    t.child_frame_id = 'camera_link'\n    t.transform.translation.x = math.cos(elapsed)\n    t.transform.translation.y = math.sin(elapsed)\n    t.transform.rotation.w = 1.0\n    self.br.sendTransform(t)\n```\n\nThat is it: a node that says, ten times a second, 'the camera is right *here* relative to the map, as of *now*.' Any other node, RViz, or a perception pipeline can now place camera data into the world correctly. In this exercise you will write exactly that broadcaster, driving `map -> camera_link` along a circular trajectory defined purely by elapsed time."
+    },
+    "exercise": {
+      "prompt": "Complete the TfCirclePublisher node so it broadcasts a dynamic transform from 'map' to 'camera_link'. On a 10 Hz timer, compute a position on a unit circle from the elapsed time (x = cos(t), y = sin(t), z = 0.0), build a properly stamped TransformStamped with an identity rotation quaternion, and send it with the TransformBroadcaster. Make sure the header stamp and both frame ids are set.",
+      "type": "python",
+      "editorLanguage": "python",
+      "starterCode": "import math\n\nimport rclpy\nfrom rclpy.node import Node\nfrom geometry_msgs.msg import TransformStamped\nfrom tf2_ros import TransformBroadcaster\n\n\nclass TfCirclePublisher(Node):\n    def __init__(self):\n        super().__init__('tf_circle_publisher')\n        # TODO: create a TransformBroadcaster bound to this node\n        self.br = None\n        self.start = self.get_clock().now()\n        # TODO: create a 0.1s (10 Hz) timer calling self.tick\n\n    def tick(self):\n        now = self.get_clock().now()\n        elapsed = (now - self.start).nanoseconds * 1e-9\n\n        t = TransformStamped()\n        # TODO: set the timestamp from `now`\n        # TODO: set parent frame_id to 'map' and child_frame_id to 'camera_link'\n        # TODO: set translation x/y to a unit circle from `elapsed`, z = 0.0\n        # TODO: set an identity rotation quaternion (w = 1.0)\n        # TODO: broadcast the transform\n\n\ndef main(args=None):\n    rclpy.init(args=args)\n    node = TfCirclePublisher()\n    try:\n        rclpy.spin(node)\n    except KeyboardInterrupt:\n        pass\n    finally:\n        node.destroy_node()\n        rclpy.shutdown()\n\n\nif __name__ == '__main__':\n    main()\n",
+      "solutionCode": "import math\n\nimport rclpy\nfrom rclpy.node import Node\nfrom geometry_msgs.msg import TransformStamped\nfrom tf2_ros import TransformBroadcaster\n\n\nclass TfCirclePublisher(Node):\n    def __init__(self):\n        super().__init__('tf_circle_publisher')\n        self.br = TransformBroadcaster(self)\n        self.start = self.get_clock().now()\n        self.timer = self.create_timer(0.1, self.tick)\n\n    def tick(self):\n        now = self.get_clock().now()\n        elapsed = (now - self.start).nanoseconds * 1e-9\n\n        t = TransformStamped()\n        t.header.stamp = now.to_msg()\n        t.header.frame_id = 'map'\n        t.child_frame_id = 'camera_link'\n        t.transform.translation.x = math.cos(elapsed)\n        t.transform.translation.y = math.sin(elapsed)\n        t.transform.translation.z = 0.0\n        t.transform.rotation.x = 0.0\n        t.transform.rotation.y = 0.0\n        t.transform.rotation.z = 0.0\n        t.transform.rotation.w = 1.0\n        self.br.sendTransform(t)\n\n\ndef main(args=None):\n    rclpy.init(args=args)\n    node = TfCirclePublisher()\n    try:\n        rclpy.spin(node)\n    except KeyboardInterrupt:\n        pass\n    finally:\n        node.destroy_node()\n        rclpy.shutdown()\n\n\nif __name__ == '__main__':\n    main()\n",
+      "supportFiles": {}
+    },
+    "verification": {
+      "strategy": "ros_graph",
+      "humanDescription": "Passed when a transform from parent frame 'map' to child frame 'camera_link' is observed on /tf, with a valid (non-zero, normalized) quaternion and a translation that visibly changes over successive samples, confirming a dynamic broadcast.",
+      "checks": [
+        {
+          "kind": "node_exists",
+          "description": "The tf_circle_publisher node is alive on the graph.",
+          "params": {
+            "nodeName": "tf_circle_publisher"
+          }
+        },
+        {
+          "kind": "tf_published",
+          "description": "A transform map -> camera_link appears on /tf with valid framing and rotation.",
+          "params": {
+            "parentFrame": "map",
+            "childFrame": "camera_link",
+            "topic": "/tf",
+            "requireValidQuaternion": true
+          }
+        },
+        {
+          "kind": "tf_published",
+          "description": "Translation differs across samples, proving the transform is dynamic.",
+          "params": {
+            "parentFrame": "map",
+            "childFrame": "camera_link",
+            "topic": "/tf",
+            "requireMotion": true,
+            "minSamples": 3,
+            "minTranslationDelta": 0.05
+          }
+        }
+      ],
+      "timeoutSeconds": 20,
+      "harnessNotes": "The harness launches the student node, then runs a probe node that subscribes to /tf using a tf2_ros.Buffer + TransformListener. It collects at least 3 stamped transforms over ~1.5s. It asserts (a) the node tf_circle_publisher is present via the graph API, (b) a transform with header.frame_id == 'map' and child_frame_id == 'camera_link' exists, (c) the quaternion norm is approximately 1.0 (rejecting the all-zero default), and (d) the Euclidean distance between the first and last sampled translation exceeds 0.05 m, confirming time-varying motion rather than a static transform. Use simulated/wall clock consistently across student and probe."
+    },
+    "quickReference": [
+      {
+        "api": "import math",
+        "what": "for cos/sin of the circle"
+      },
+      {
+        "api": "from geometry_msgs.msg import TransformStamped",
+        "what": "a stamped parent-to-child transform"
+      },
+      {
+        "api": "from tf2_ros import TransformBroadcaster",
+        "what": "broadcasts dynamic transforms on /tf"
+      },
+      {
+        "api": "self.br = TransformBroadcaster(self)",
+        "what": "create the broadcaster bound to node"
+      },
+      {
+        "api": "now = self.get_clock().now(); now.to_msg()",
+        "what": "current time as a stamp"
+      },
+      {
+        "api": "(now - self.start).nanoseconds * 1e-9",
+        "what": "elapsed seconds since start"
+      },
+      {
+        "api": "t.header.frame_id = 'map'; t.child_frame_id = 'camera_link'",
+        "what": "set parent and child frames"
+      },
+      {
+        "api": "t.transform.translation.x = math.cos(elapsed)",
+        "what": "set translation along the circle"
+      },
+      {
+        "api": "self.br.sendTransform(t)  # rotation.w = 1.0",
+        "what": "broadcast with identity rotation"
+      }
+    ],
+    "hints": [
+      "A transform just says 'where is the child frame relative to the parent, right now' -- and because the camera moves, you re-send it ten times a second with a fresh timestamp each time. Most of the timer math (elapsed time) is already written for you.",
+      "In __init__ create a TransformBroadcaster and a timer. In tick() build a TransformStamped, fill in its stamp, parent/child frames, translation, and rotation, then broadcast it. The position rides a unit circle using cos/sin of the elapsed time.",
+      "Use self.br = TransformBroadcaster(self) and self.create_timer(0.1, self.tick). In tick(): t.header.stamp = now.to_msg(), t.header.frame_id = 'map', t.child_frame_id = 'camera_link', t.transform.translation.x = math.cos(elapsed), .y = math.sin(elapsed), .z = 0.0, then self.br.sendTransform(t).",
+      "The single most common TF2 bug: leaving the rotation quaternion all zeros (invalid). Set the identity rotation with t.transform.rotation.w = 1.0 (x, y, z stay 0.0). Also make sure you actually set the stamp from now -- the grader checks the transform changes over time and has a valid quaternion."
+    ]
+  },
+  {
+    "id": "module-11",
+    "phase": 3,
+    "order": 11,
+    "title": "Data Recording & Playback (rosbag2_py)",
+    "topic": "Recording topic data to disk and replaying it later, driven programmatically through the rosbag2_py API instead of the CLI.",
+    "estimatedMinutes": 45,
+    "learningObjectives": [
+      "Describe what a rosbag is and why offline recording is essential for robotics development.",
+      "Configure a bag with StorageOptions and ConverterOptions.",
+      "Register a topic with TopicMetadata before writing to it.",
+      "Serialize a ROS message and write it to a bag using SequentialWriter and serialize_message."
+    ],
+    "lesson": {
+      "markdown": "# Data Recording & Playback (rosbag2_py)\n\nIn 2D CV you saved datasets as folders of images and label files so you could train and debug without re-running the camera. Robotics has the same need, but the data is a flood of *timestamped messages* across many topics: images, LiDAR, IMU, transforms, all interleaved. A **rosbag** is the dataset format that captures that flood and lets you replay it byte-for-byte later. Record a tricky bug once at 2 a.m., replay it a hundred times at your desk.\n\nMost people record with the CLI (`ros2 bag record`). But sometimes you need to build a bag *programmatically*, for example to synthesize test fixtures, convert another format into a bag, or write a custom logger. That is what `rosbag2_py` is for, and that is what you will do here, with no CLI at all.\n\n## The four ingredients\n\nWriting a bag in Python needs four pieces from `rosbag2_py` plus one serialization helper:\n\n```python\nimport rosbag2_py\nfrom rclpy.serialization import serialize_message\n```\n\n**StorageOptions** says *where* the bag lives and what backend stores it:\n\n```python\nstorage = rosbag2_py.StorageOptions(uri='/tmp/my_bag', storage_id='sqlite3')\n```\n\nThe `uri` is a directory that rosbag2 creates. `sqlite3` is the classic backend (`mcap` is the modern one); both ship with Humble/Jazzy.\n\n**ConverterOptions** says how messages are serialized on the wire. For normal recording, leave both formats as `cdr`, the default ROS serialization:\n\n```python\nconverter = rosbag2_py.ConverterOptions(\n    input_serialization_format='cdr',\n    output_serialization_format='cdr')\n```\n\n**SequentialWriter** is the object that actually writes:\n\n```python\nwriter = rosbag2_py.SequentialWriter()\nwriter.open(storage, converter)\n```\n\n**TopicMetadata** declares a topic *before* you write any message to it, the bag's equivalent of a table schema:\n\n```python\ntopic_info = rosbag2_py.TopicMetadata(\n    name='/chatter',\n    type='std_msgs/msg/String',\n    serialization_format='cdr')\nwriter.create_topic(topic_info)\n```\n\nDepending on your distro `TopicMetadata` may also accept an `id` field; the keyword form above is portable.\n\n## Writing a message\n\nUnlike a live publisher, the writer does not take a Python message object directly. You must **serialize** it to raw bytes first, then hand over the topic name, the bytes, and a timestamp in nanoseconds:\n\n```python\nfrom std_msgs.msg import String\n\nmsg = String()\nmsg.data = 'hello bag'\n\nstamp_ns = node.get_clock().now().nanoseconds\nwriter.write('/chatter', serialize_message(msg), stamp_ns)\n```\n\nThe topic name passed to `write` must match a topic you already registered with `create_topic`, or the call fails. The timestamp is what playback uses to reproduce timing, so it matters.\n\n## Playback in one breath\n\nReading mirrors writing: open a `SequentialReader` with the same `StorageOptions`, then loop `while reader.has_next(): (topic, data, t) = reader.read_next()` and call `deserialize_message(data, MsgType)` to get your object back. The grader for this exercise will do exactly that to your bag.\n\nIn the exercise you will open a writer at a sandbox path, register a `std_msgs/msg/String` topic, serialize one message, and write it, building a valid, replayable bag entirely in code."
+    },
+    "exercise": {
+      "prompt": "Complete write_bag() so it programmatically creates a rosbag at the provided bag_uri using only the rosbag2_py API (no CLI). Open a SequentialWriter with StorageOptions (sqlite3) and default cdr ConverterOptions, register a topic '/chatter' of type 'std_msgs/msg/String' via TopicMetadata, then serialize a String message whose data is 'hello bag' and write it with a current timestamp in nanoseconds. The bag_uri is supplied by the harness and points inside a sandbox temp directory.",
+      "type": "python",
+      "editorLanguage": "python",
+      "starterCode": "import sys\n\nimport rclpy\nfrom rclpy.node import Node\nfrom rclpy.serialization import serialize_message\nfrom std_msgs.msg import String\nimport rosbag2_py\n\n\ndef write_bag(bag_uri: str):\n    node = rclpy.create_node('bag_writer')\n\n    # TODO: build StorageOptions for `bag_uri` using the 'sqlite3' storage backend\n    storage_options = None\n    # TODO: build ConverterOptions with input/output serialization format 'cdr'\n    converter_options = None\n\n    writer = rosbag2_py.SequentialWriter()\n    # TODO: open the writer with the storage and converter options\n\n    # TODO: create a TopicMetadata for '/chatter', type 'std_msgs/msg/String',\n    #       serialization_format 'cdr', and register it with writer.create_topic(...)\n\n    msg = String()\n    msg.data = 'hello bag'\n    stamp_ns = node.get_clock().now().nanoseconds\n\n    # TODO: serialize `msg` and write it to '/chatter' with `stamp_ns`\n\n    node.destroy_node()\n\n\ndef main(args=None):\n    rclpy.init(args=args)\n    bag_uri = sys.argv[1] if len(sys.argv) > 1 else '/tmp/student_bag'\n    write_bag(bag_uri)\n    rclpy.shutdown()\n\n\nif __name__ == '__main__':\n    main()\n",
+      "solutionCode": "import sys\n\nimport rclpy\nfrom rclpy.serialization import serialize_message\nfrom std_msgs.msg import String\nimport rosbag2_py\n\n\ndef write_bag(bag_uri: str):\n    node = rclpy.create_node('bag_writer')\n\n    storage_options = rosbag2_py.StorageOptions(uri=bag_uri, storage_id='sqlite3')\n    converter_options = rosbag2_py.ConverterOptions(\n        input_serialization_format='cdr',\n        output_serialization_format='cdr')\n\n    writer = rosbag2_py.SequentialWriter()\n    writer.open(storage_options, converter_options)\n\n    topic_info = rosbag2_py.TopicMetadata(\n        name='/chatter',\n        type='std_msgs/msg/String',\n        serialization_format='cdr')\n    writer.create_topic(topic_info)\n\n    msg = String()\n    msg.data = 'hello bag'\n    stamp_ns = node.get_clock().now().nanoseconds\n\n    writer.write('/chatter', serialize_message(msg), stamp_ns)\n\n    node.destroy_node()\n\n\ndef main(args=None):\n    rclpy.init(args=args)\n    bag_uri = sys.argv[1] if len(sys.argv) > 1 else '/tmp/student_bag'\n    write_bag(bag_uri)\n    rclpy.shutdown()\n\n\nif __name__ == '__main__':\n    main()\n",
+      "supportFiles": {}
+    },
+    "verification": {
+      "strategy": "file_check",
+      "humanDescription": "Passed when the script produces a real rosbag at the sandbox path that, when reopened, contains exactly one message on topic '/chatter' of type 'std_msgs/msg/String' whose deserialized data equals 'hello bag'.",
+      "checks": [
+        {
+          "kind": "bag_file_written",
+          "description": "A valid rosbag directory with metadata and storage files exists at the sandbox bag uri.",
+          "params": {
+            "bagUriEnv": "STUDENT_BAG_URI",
+            "requireMetadataYaml": true
+          }
+        },
+        {
+          "kind": "bag_file_written",
+          "description": "Reopening the bag yields one '/chatter' std_msgs/msg/String message equal to 'hello bag'.",
+          "params": {
+            "bagUriEnv": "STUDENT_BAG_URI",
+            "expectTopic": "/chatter",
+            "expectType": "std_msgs/msg/String",
+            "expectCount": 1,
+            "expectDeserializedField": {
+              "field": "data",
+              "value": "hello bag"
+            }
+          }
+        }
+      ],
+      "timeoutSeconds": 20,
+      "harnessNotes": "The harness creates a fresh sandbox temp directory (e.g. via mkdtemp) and passes a bag uri inside it as argv[1], also exporting it as STUDENT_BAG_URI; it runs the student script, then independently opens that bag with a rosbag2_py.SequentialReader configured with matching StorageOptions(storage_id='sqlite3') and cdr ConverterOptions. It first asserts the bag directory and its metadata.yaml exist. It then reads topic metadata and asserts '/chatter' is registered as 'std_msgs/msg/String', loops read_next() to count messages (must be exactly 1), and deserialize_message(data, std_msgs.msg.String) on the single record, asserting .data == 'hello bag'. The temp directory is removed after grading."
+    },
+    "quickReference": [
+      {
+        "api": "import rosbag2_py",
+        "what": "programmatic rosbag read/write API"
+      },
+      {
+        "api": "from rclpy.serialization import serialize_message",
+        "what": "message to raw bytes for the bag"
+      },
+      {
+        "api": "from std_msgs.msg import String",
+        "what": "the message type being recorded"
+      },
+      {
+        "api": "rosbag2_py.StorageOptions(uri=bag_uri, storage_id='sqlite3')",
+        "what": "where the bag lives and its backend"
+      },
+      {
+        "api": "rosbag2_py.ConverterOptions(input_serialization_format='cdr', output_serialization_format='cdr')",
+        "what": "serialization formats (cdr default)"
+      },
+      {
+        "api": "writer = rosbag2_py.SequentialWriter(); writer.open(storage_options, converter_options)",
+        "what": "open the bag writer"
+      },
+      {
+        "api": "rosbag2_py.TopicMetadata(name='/chatter', type='std_msgs/msg/String', serialization_format='cdr')",
+        "what": "declare a topic's schema"
+      },
+      {
+        "api": "writer.create_topic(topic_info)",
+        "what": "register the topic before writing"
+      },
+      {
+        "api": "writer.write('/chatter', serialize_message(msg), stamp_ns)",
+        "what": "write serialized message with timestamp"
+      }
+    ],
+    "hints": [
+      "Writing a bag is like setting up a little database: say where it lives, declare the one 'table' (topic) you'll write, then write one row (message). There's no live publishing here -- it's all in code, four small objects from rosbag2_py.",
+      "You need StorageOptions (where + backend), ConverterOptions (the format), a SequentialWriter you open, a TopicMetadata you register, and finally a serialized write. The serialize helper is already imported.",
+      "Build rosbag2_py.StorageOptions(uri=bag_uri, storage_id='sqlite3') and rosbag2_py.ConverterOptions(input_serialization_format='cdr', output_serialization_format='cdr'); then writer.open(storage_options, converter_options); register rosbag2_py.TopicMetadata(name='/chatter', type='std_msgs/msg/String', serialization_format='cdr') with writer.create_topic(...).",
+      "The writer doesn't take the Python message directly -- it needs raw bytes. Call writer.write('/chatter', serialize_message(msg), stamp_ns), and make sure the topic name in write() exactly matches the one you registered with create_topic(), or it fails."
+    ]
+  },
+  {
+    "id": "module-12",
+    "phase": 3,
+    "order": 12,
+    "title": "Visualization Pipelines (RViz2 & Foxglove Studio)",
+    "topic": "Turning robot data into visual primitives like PointClouds, Markers, and Odometry that RViz2 and Foxglove Studio can render.",
+    "estimatedMinutes": 45,
+    "learningObjectives": [
+      "Explain the role of RViz2 and Foxglove Studio as subscribers that render topics.",
+      "Choose the right visualization_msgs marker type for a given shape.",
+      "Populate a Marker with frame_id, type, pose, scale, color, and a unique id.",
+      "Publish a MarkerArray of 3D bounding boxes consumable over a Foxglove WebSocket bridge."
+    ],
+    "lesson": {
+      "markdown": "# Visualization Pipelines (RViz2 & Foxglove Studio)\n\nIn 2D CV, debugging meant drawing boxes on an image with OpenCV and looking at the result. In ROS 2 you do not draw directly. Instead you *publish a topic describing what you want drawn*, and a separate viewer renders it. The two big viewers are **RViz2** (the classic native desktop tool) and **Foxglove Studio** (a modern app that runs in the browser and connects over a WebSocket bridge, great for remote robots). Both are just subscribers. Your node is the source of truth.\n\nThis decoupling is powerful: the same publisher feeds a developer's RViz2 today and a teammate's browser Foxglove session tomorrow, with no code change.\n\n## Three kinds of visual data\n\n- **PointClouds** (`sensor_msgs/msg/PointCloud2`): raw 3D points from a depth camera or LiDAR.\n- **Odometry** (`nav_msgs/msg/Odometry`): where the robot thinks it is and how fast it is moving.\n- **Markers** (`visualization_msgs/msg/Marker` and `MarkerArray`): arbitrary shapes *you* define, cubes, spheres, arrows, text, lines. Markers are how you draw your *own* annotations, exactly like those OpenCV boxes, but in 3D.\n\nFor 3D object detection, the natural output is a set of CUBE markers, one box per detected object. A `MarkerArray` is just a list of `Marker` messages published together.\n\n## Anatomy of a CUBE marker\n\n```python\nfrom visualization_msgs.msg import Marker, MarkerArray\n\nm = Marker()\nm.header.frame_id = 'map'\nm.header.stamp = node.get_clock().now().to_msg()\nm.ns = 'detections'\nm.id = 0                       # MUST be unique within the namespace\nm.type = Marker.CUBE\nm.action = Marker.ADD\nm.pose.position.x = 1.0\nm.pose.position.y = 2.0\nm.pose.position.z = 0.5\nm.pose.orientation.w = 1.0     # identity rotation\nm.scale.x = 1.0                # box dimensions in meters\nm.scale.y = 0.5\nm.scale.z = 0.8\nm.color.r = 1.0\nm.color.g = 0.0\nm.color.b = 0.0\nm.color.a = 1.0                # alpha; 0 means invisible!\n```\n\nThree gotchas trip up everyone:\n\n1. **`color.a` must be > 0.** A marker with alpha 0 is fully transparent and looks like a bug ('my markers do not show up!').\n2. **`scale` must be non-zero.** A cube with `scale.x = 0` has no width and renders as nothing.\n3. **`id` must be unique** within a namespace. Reusing an id means the second marker *overwrites* the first, so a four-object array with all ids = 0 shows one box.\n\n## Building the array\n\n```python\narr = MarkerArray()\nfor i, box in enumerate(boxes):\n    m = Marker()\n    m.header.frame_id = 'map'\n    m.header.stamp = node.get_clock().now().to_msg()\n    m.ns = 'detections'\n    m.id = i\n    m.type = Marker.CUBE\n    m.action = Marker.ADD\n    m.pose.position.x = box['x']\n    m.pose.orientation.w = 1.0\n    m.scale.x = m.scale.y = m.scale.z = 1.0\n    m.color.g = 1.0\n    m.color.a = 1.0\n    arr.markers.append(m)\npublisher.publish(arr)\n```\n\nWhen Foxglove connects through the `foxglove_bridge` WebSocket, it subscribes to your `MarkerArray` topic and renders every cube in 3D in the browser, in real time. In the exercise you will publish a `MarkerArray` of three CUBE bounding boxes on a timer, each with a unique id, a valid frame, non-zero scale, and visible color, ready for a web Foxglove client to render."
+    },
+    "exercise": {
+      "prompt": "Complete the BoxMarkerPublisher node so it publishes a visualization_msgs/msg/MarkerArray on '/detected_boxes' at 2 Hz. Build three CUBE markers (Marker.CUBE, Marker.ADD) in frame 'map', each with a unique id, a non-zero scale on all three axes, an identity orientation, and a visible color (alpha = 1.0). Append them to the MarkerArray and publish.",
+      "type": "python",
+      "editorLanguage": "python",
+      "starterCode": "import rclpy\nfrom rclpy.node import Node\nfrom visualization_msgs.msg import Marker, MarkerArray\n\n\nclass BoxMarkerPublisher(Node):\n    def __init__(self):\n        super().__init__('box_marker_publisher')\n        # TODO: create a publisher of MarkerArray on '/detected_boxes'\n        self.pub = None\n        # TODO: create a 0.5s (2 Hz) timer calling self.publish_boxes\n        self.boxes = [\n            {'x': 1.0, 'y': 0.0, 'z': 0.5},\n            {'x': 2.0, 'y': 1.0, 'z': 0.5},\n            {'x': 3.0, 'y': -1.0, 'z': 0.5},\n        ]\n\n    def publish_boxes(self):\n        arr = MarkerArray()\n        for i, box in enumerate(self.boxes):\n            m = Marker()\n            m.header.frame_id = 'map'\n            m.header.stamp = self.get_clock().now().to_msg()\n            m.ns = 'detections'\n            # TODO: set a unique id from `i`\n            # TODO: set type to Marker.CUBE and action to Marker.ADD\n            # TODO: set pose position from `box` and orientation.w = 1.0\n            # TODO: set scale.x/y/z to non-zero box dimensions\n            # TODO: set a visible color (a = 1.0)\n            arr.markers.append(m)\n        # TODO: publish the MarkerArray\n\n\ndef main(args=None):\n    rclpy.init(args=args)\n    node = BoxMarkerPublisher()\n    try:\n        rclpy.spin(node)\n    except KeyboardInterrupt:\n        pass\n    finally:\n        node.destroy_node()\n        rclpy.shutdown()\n\n\nif __name__ == '__main__':\n    main()\n",
+      "solutionCode": "import rclpy\nfrom rclpy.node import Node\nfrom visualization_msgs.msg import Marker, MarkerArray\n\n\nclass BoxMarkerPublisher(Node):\n    def __init__(self):\n        super().__init__('box_marker_publisher')\n        self.pub = self.create_publisher(MarkerArray, '/detected_boxes', 10)\n        self.timer = self.create_timer(0.5, self.publish_boxes)\n        self.boxes = [\n            {'x': 1.0, 'y': 0.0, 'z': 0.5},\n            {'x': 2.0, 'y': 1.0, 'z': 0.5},\n            {'x': 3.0, 'y': -1.0, 'z': 0.5},\n        ]\n\n    def publish_boxes(self):\n        arr = MarkerArray()\n        for i, box in enumerate(self.boxes):\n            m = Marker()\n            m.header.frame_id = 'map'\n            m.header.stamp = self.get_clock().now().to_msg()\n            m.ns = 'detections'\n            m.id = i\n            m.type = Marker.CUBE\n            m.action = Marker.ADD\n            m.pose.position.x = box['x']\n            m.pose.position.y = box['y']\n            m.pose.position.z = box['z']\n            m.pose.orientation.x = 0.0\n            m.pose.orientation.y = 0.0\n            m.pose.orientation.z = 0.0\n            m.pose.orientation.w = 1.0\n            m.scale.x = 1.0\n            m.scale.y = 0.6\n            m.scale.z = 0.8\n            m.color.r = 0.0\n            m.color.g = 1.0\n            m.color.b = 0.0\n            m.color.a = 1.0\n            arr.markers.append(m)\n        self.pub.publish(arr)\n\n\ndef main(args=None):\n    rclpy.init(args=args)\n    node = BoxMarkerPublisher()\n    try:\n        rclpy.spin(node)\n    except KeyboardInterrupt:\n        pass\n    finally:\n        node.destroy_node()\n        rclpy.shutdown()\n\n\nif __name__ == '__main__':\n    main()\n",
+      "supportFiles": {}
+    },
+    "verification": {
+      "strategy": "introspection",
+      "humanDescription": "Passed when a MarkerArray on '/detected_boxes' is received containing multiple CUBE markers, each with a non-zero scale, a non-empty frame_id, a visible (alpha > 0) color, and ids that are unique within the array.",
+      "checks": [
+        {
+          "kind": "topic_msg_type",
+          "description": "'/detected_boxes' publishes visualization_msgs/msg/MarkerArray.",
+          "params": {
+            "topic": "/detected_boxes",
+            "expectedType": "visualization_msgs/msg/MarkerArray"
+          }
+        },
+        {
+          "kind": "marker_array_valid",
+          "description": "Markers are CUBE, well-formed, visible, and uniquely identified.",
+          "params": {
+            "topic": "/detected_boxes",
+            "minMarkers": 2,
+            "requireType": "CUBE",
+            "requireNonZeroScale": true,
+            "requireNonEmptyFrameId": true,
+            "requireAlphaGreaterThanZero": true,
+            "requireUniqueIds": true
+          }
+        }
+      ],
+      "timeoutSeconds": 20,
+      "harnessNotes": "The harness launches the student node and runs a probe subscriber on '/detected_boxes' typed as visualization_msgs/msg/MarkerArray (matching the QoS, depth 10). It waits up to the timeout for the first message. It asserts the topic type via the graph introspection API, then for the captured MarkerArray asserts: markers list length >= 2; every marker.type == Marker.CUBE (3); every marker.scale.x/y/z > 0; every marker.header.frame_id is a non-empty string; every marker.color.a > 0; and the set of (ns, id) pairs has no duplicates. This mirrors what a Foxglove WebSocket client needs to actually render the boxes, so passing means the output is valid for a web visualization session."
+    },
+    "quickReference": [
+      {
+        "api": "from visualization_msgs.msg import Marker, MarkerArray",
+        "what": "drawable 3D shapes for viewers"
+      },
+      {
+        "api": "self.create_publisher(MarkerArray, '/detected_boxes', 10)",
+        "what": "publish a list of markers"
+      },
+      {
+        "api": "self.create_timer(0.5, self.publish_boxes)",
+        "what": "publish at 2 Hz"
+      },
+      {
+        "api": "m.header.frame_id = 'map'; m.header.stamp = self.get_clock().now().to_msg()",
+        "what": "frame and time for the marker"
+      },
+      {
+        "api": "m.id = i; m.ns = 'detections'",
+        "what": "unique id within the namespace"
+      },
+      {
+        "api": "m.type = Marker.CUBE; m.action = Marker.ADD",
+        "what": "make it an added cube"
+      },
+      {
+        "api": "m.scale.x/y/z = 1.0  # non-zero",
+        "what": "box dimensions must be non-zero"
+      },
+      {
+        "api": "m.color.a = 1.0  # alpha > 0",
+        "what": "alpha > 0 or it's invisible"
+      },
+      {
+        "api": "arr.markers.append(m); self.pub.publish(arr)",
+        "what": "collect markers and publish array"
+      }
+    ],
+    "hints": [
+      "You're not drawing the boxes yourself -- you publish a message describing three cubes and a viewer renders them. The boxes' positions are already given in self.boxes; your job is to turn each into a properly filled Marker. Most of the loop scaffold is there.",
+      "In __init__ make a MarkerArray publisher and a 2 Hz timer. Inside the loop, for each box set the marker's id, type, action, pose, scale, and color, then append it; after the loop, publish the array.",
+      "Use self.create_publisher(MarkerArray, '/detected_boxes', 10) and self.create_timer(0.5, self.publish_boxes). Per marker: m.id = i, m.type = Marker.CUBE, m.action = Marker.ADD, set pose.position from box and pose.orientation.w = 1.0, then arr.markers.append(m) and self.pub.publish(arr).",
+      "Three things make markers invisible if you skip them: scale.x/y/z must all be non-zero, color.a must be > 0 (e.g. 1.0), and each marker's id must be unique (use i from enumerate) or later boxes overwrite earlier ones. Set at least one color channel too so it's visible."
+    ]
+  },
+  {
+    "id": "module-13",
+    "phase": 3,
+    "order": 13,
+    "title": "Simulation Environments (Gazebo)",
+    "topic": "Bridging ROS 2 with the Gazebo physics simulator so nodes can react to simulated sensors before touching real hardware.",
+    "estimatedMinutes": 45,
+    "learningObjectives": [
+      "Explain why simulation accelerates and de-risks robotics development.",
+      "Describe how ros_gz_bridge connects Gazebo Harmonic topics to ROS 2 topics.",
+      "Subscribe to a sensor_msgs/msg/LaserScan and interpret its ranges array.",
+      "Implement a reactive safety node that triggers an emergency stop on a near obstacle."
+    ],
+    "lesson": {
+      "markdown": "# Simulation Environments (Gazebo)\n\nYou cannot crash a simulated robot into a wall and break it. That is the whole pitch for simulation: test perception and control logic against realistic physics and sensors with zero hardware risk, then run the *same* node on the real robot. Today's standard simulator is **Gazebo** (the modern 'Gazebo Harmonic' line, formerly 'Ignition'). It computes physics, renders sensors, and publishes their data.\n\n## Gazebo speaks its own language: the bridge\n\nGazebo has its own transport system, separate from ROS 2's DDS. To get a simulated LiDAR scan from Gazebo into your rclpy node, you run **`ros_gz_bridge`**, a process that translates messages back and forth:\n\n```bash\nros2 run ros_gz_bridge parameter_bridge \\\n  /scan@sensor_msgs/msg/LaserScan@gz.msgs.LaserScan\n```\n\nThe triple-`@` syntax is `ros_topic@ros_type@gz_type`. After this runs, a `/scan` topic appears on the ROS 2 graph carrying `sensor_msgs/msg/LaserScan`, and your node neither knows nor cares the data originated in Gazebo. That is the beauty of the bridge: your subscriber code is identical whether the data comes from a sim or a real LiDAR.\n\n## Reading a LaserScan\n\nA `sensor_msgs/msg/LaserScan` is a 1D sweep of distances. The key field is `ranges`, a list of floats, one distance per angular step:\n\n```python\nfrom sensor_msgs.msg import LaserScan\n\ndef on_scan(self, msg: LaserScan):\n    # msg.angle_min, msg.angle_max, msg.angle_increment describe the sweep\n    # msg.range_min, msg.range_max bound valid readings\n    valid = [r for r in msg.ranges\n             if msg.range_min <= r <= msg.range_max]\n    closest = min(valid) if valid else float('inf')\n```\n\nReal sensors return `inf` or `nan` for 'no return' and out-of-range values, so always filter before calling `min`. A naive `min(msg.ranges)` can return `0.0` or `nan` and make you stop forever or never.\n\n## A reactive emergency stop\n\nThe classic safety reflex: if anything is closer than a threshold, stop the robot. We publish a zero `geometry_msgs/msg/Twist` (no linear, no angular velocity) to the drive topic, which commands the base to halt:\n\n```python\nfrom geometry_msgs.msg import Twist\n\nTHRESHOLD = 0.5  # meters\n\ndef on_scan(self, msg):\n    valid = [r for r in msg.ranges\n             if msg.range_min <= r <= msg.range_max]\n    closest = min(valid) if valid else float('inf')\n    if closest < THRESHOLD:\n        stop = Twist()        # all zeros == full stop\n        self.cmd_pub.publish(stop)\n        self.get_logger().warn(f'E-STOP: obstacle at {closest:.2f} m')\n```\n\nBecause this is just a ROS 2 subscriber + publisher, the exact same node protects a Gazebo robot and a physical one. In simulation you can deliberately spawn a wall 0.3 m away and watch the stop fire, something you would never risk with real hardware.\n\nIn the exercise you will write this node: subscribe to `/scan` (`sensor_msgs/msg/LaserScan`), compute the closest *valid* range, and when it drops below 0.5 m, publish a zero `Twist` on `/cmd_vel` as the emergency stop. The grader will inject a scan with a planted close obstacle and confirm your stop fires."
+    },
+    "exercise": {
+      "prompt": "Complete the EmergencyStop node. Subscribe to '/scan' (sensor_msgs/msg/LaserScan) and publish geometry_msgs/msg/Twist on '/cmd_vel'. In the scan callback, compute the closest VALID range (ignore values outside [range_min, range_max] and non-finite readings); if it is below 0.5 m, publish a zero Twist (all fields 0.0) as the emergency stop. The harness will publish a synthetic LaserScan containing a reading inside 0.5 m.",
+      "type": "python",
+      "editorLanguage": "python",
+      "starterCode": "import math\n\nimport rclpy\nfrom rclpy.node import Node\nfrom sensor_msgs.msg import LaserScan\nfrom geometry_msgs.msg import Twist\n\n\nclass EmergencyStop(Node):\n    THRESHOLD = 0.5  # meters\n\n    def __init__(self):\n        super().__init__('emergency_stop')\n        # TODO: create a publisher of Twist on '/cmd_vel'\n        self.cmd_pub = None\n        # TODO: create a subscription to LaserScan on '/scan' calling self.on_scan\n\n    def on_scan(self, msg: LaserScan):\n        # TODO: build a list of valid ranges within [msg.range_min, msg.range_max]\n        #       that are finite (skip inf / nan)\n        # TODO: compute the closest valid range (inf if none)\n        # TODO: if closest < self.THRESHOLD, publish a zero Twist on /cmd_vel\n        pass\n\n\ndef main(args=None):\n    rclpy.init(args=args)\n    node = EmergencyStop()\n    try:\n        rclpy.spin(node)\n    except KeyboardInterrupt:\n        pass\n    finally:\n        node.destroy_node()\n        rclpy.shutdown()\n\n\nif __name__ == '__main__':\n    main()\n",
+      "solutionCode": "import math\n\nimport rclpy\nfrom rclpy.node import Node\nfrom sensor_msgs.msg import LaserScan\nfrom geometry_msgs.msg import Twist\n\n\nclass EmergencyStop(Node):\n    THRESHOLD = 0.5  # meters\n\n    def __init__(self):\n        super().__init__('emergency_stop')\n        self.cmd_pub = self.create_publisher(Twist, '/cmd_vel', 10)\n        self.sub = self.create_subscription(LaserScan, '/scan', self.on_scan, 10)\n\n    def on_scan(self, msg: LaserScan):\n        valid = [r for r in msg.ranges\n                 if math.isfinite(r) and msg.range_min <= r <= msg.range_max]\n        closest = min(valid) if valid else float('inf')\n        if closest < self.THRESHOLD:\n            stop = Twist()\n            stop.linear.x = 0.0\n            stop.linear.y = 0.0\n            stop.linear.z = 0.0\n            stop.angular.x = 0.0\n            stop.angular.y = 0.0\n            stop.angular.z = 0.0\n            self.cmd_pub.publish(stop)\n            self.get_logger().warn(f'E-STOP: obstacle at {closest:.2f} m')\n\n\ndef main(args=None):\n    rclpy.init(args=args)\n    node = EmergencyStop()\n    try:\n        rclpy.spin(node)\n    except KeyboardInterrupt:\n        pass\n    finally:\n        node.destroy_node()\n        rclpy.shutdown()\n\n\nif __name__ == '__main__':\n    main()\n",
+      "supportFiles": {}
+    },
+    "verification": {
+      "strategy": "ros_graph",
+      "humanDescription": "Passed when, after a synthetic LaserScan with an obstacle closer than 0.5 m is injected on '/scan', the node publishes a zero geometry_msgs/msg/Twist on '/cmd_vel'.",
+      "checks": [
+        {
+          "kind": "node_exists",
+          "description": "The emergency_stop node is present and subscribed to /scan.",
+          "params": {
+            "nodeName": "emergency_stop",
+            "requireSubscription": "/scan"
+          }
+        },
+        {
+          "kind": "topic_published",
+          "description": "A zero Twist e-stop is published on /cmd_vel in response to the close scan.",
+          "params": {
+            "topic": "/cmd_vel",
+            "expectedType": "geometry_msgs/msg/Twist",
+            "expectZeroTwist": true
+          }
+        }
+      ],
+      "timeoutSeconds": 20,
+      "harnessNotes": "The harness launches the student node, then runs a probe that publishes one synthetic sensor_msgs/msg/LaserScan on '/scan' with angle_min=-1.57, angle_max=1.57, range_min=0.05, range_max=10.0, and a ranges array padded with large values (e.g. 5.0) plus a planted close reading of 0.30 m (and some inf entries to verify filtering). The probe subscribes to '/cmd_vel' as geometry_msgs/msg/Twist. It asserts the emergency_stop node exists and subscribes to /scan, then that within the timeout at least one Twist arrives on /cmd_vel with all six components equal to 0.0 (zero e-stop). A negative phase (publishing a scan whose closest valid range is 2.0 m) may optionally confirm no Twist is published when nothing is near."
+    },
+    "quickReference": [
+      {
+        "api": "import math",
+        "what": "for math.isfinite range filtering"
+      },
+      {
+        "api": "from sensor_msgs.msg import LaserScan",
+        "what": "1D sweep of distance readings"
+      },
+      {
+        "api": "from geometry_msgs.msg import Twist",
+        "what": "velocity command message type"
+      },
+      {
+        "api": "self.create_publisher(Twist, '/cmd_vel', 10)",
+        "what": "publish drive commands"
+      },
+      {
+        "api": "self.create_subscription(LaserScan, '/scan', self.on_scan, 10)",
+        "what": "subscribe to the laser scan"
+      },
+      {
+        "api": "[r for r in msg.ranges if math.isfinite(r) and msg.range_min <= r <= msg.range_max]",
+        "what": "keep only valid finite ranges"
+      },
+      {
+        "api": "closest = min(valid) if valid else float('inf')",
+        "what": "find the nearest valid distance"
+      },
+      {
+        "api": "stop = Twist(); self.cmd_pub.publish(stop)",
+        "what": "publish zero Twist as e-stop"
+      }
+    ],
+    "hints": [
+      "This is a simple safety reflex: look at the laser distances, find the nearest real one, and if something's too close, slam the brakes by commanding zero velocity. It's a subscriber plus a publisher -- the same pattern you've done before.",
+      "In __init__ make a Twist publisher on '/cmd_vel' and a LaserScan subscription on '/scan'. In the callback, filter the ranges to valid finite values, take the minimum, and publish a zero Twist if it's under the threshold.",
+      "Use self.cmd_pub = self.create_publisher(Twist, '/cmd_vel', 10) and self.create_subscription(LaserScan, '/scan', self.on_scan, 10). Build valid = [r for r in msg.ranges if math.isfinite(r) and msg.range_min <= r <= msg.range_max], then closest = min(valid) if valid else float('inf').",
+      "The trap is calling min() on the raw ranges: real scans contain inf/nan and out-of-range values that would poison it -- that's why you filter with math.isfinite first. When closest < self.THRESHOLD, publish a Twist with all six fields at 0.0 (a fresh Twist() is already all zeros)."
+    ]
+  },
+  {
+    "id": "module-14",
+    "phase": 3,
+    "order": 14,
+    "title": "Command Line Introspection & Debugging",
+    "topic": "Using the ros2 CLI to inspect a live system's topics, message types, and structures, and to inject test messages by hand.",
+    "estimatedMinutes": 35,
+    "learningObjectives": [
+      "Discover the message type of an unknown topic with ros2 topic type.",
+      "Inspect the fields of a message definition with ros2 interface show.",
+      "Hand-publish a well-formed message to a topic with ros2 topic pub.",
+      "Sequence CLI introspection commands into an effective debugging workflow."
+    ],
+    "lesson": {
+      "markdown": "# Command Line Introspection & Debugging\n\nWhen a robot misbehaves, you do not start by reading code, you start by *interrogating the running system*. The `ros2` CLI is your stethoscope. Before writing any node, you can ask the live graph what topics exist, what they carry, and what they expect, and you can poke them with test data. This module is hands-on with the terminal, no Python.\n\n## The discovery workflow\n\nImagine you join a project and see a topic `/turtle1/cmd_vel` flickering in `ros2 topic list`, but you have no idea what it is or how to drive it. There is a reliable three-step workflow.\n\n### Step 1: What type is it?\n\n```bash\nros2 topic type /turtle1/cmd_vel\n```\n\nThis prints the fully qualified message type, for example:\n\n```\ngeometry_msgs/msg/Twist\n```\n\nNow you know the *kind* of data, but not its shape.\n\n### Step 2: What is inside that type?\n\n```bash\nros2 interface show geometry_msgs/msg/Twist\n```\n\nThis prints the message definition so you know exactly which fields to fill:\n\n```\nVector3  linear\n\tfloat64 x\n\tfloat64 y\n\tfloat64 z\nVector3  angular\n\tfloat64 x\n\tfloat64 y\n\tfloat64 z\n```\n\nNote: it is `ros2 interface show`, not the old ROS 1 `rosmsg show`. The argument is the type string you got from step 1, not the topic name, a very common mix-up.\n\n### Step 3: Send a test message\n\nNow you can publish a hand-crafted message to see what it does:\n\n```bash\nros2 topic pub --once /turtle1/cmd_vel geometry_msgs/msg/Twist \"{linear: {x: 2.0}, angular: {z: 1.8}}\"\n```\n\nBreaking this down:\n\n- `--once` publishes a single message and exits. Without it, `ros2 topic pub` publishes repeatedly at 1 Hz until you Ctrl-C.\n- The arguments are `topic`, then `type`, then the message data as a **YAML string**.\n- Any field you omit defaults to zero, so you only specify what you care about.\n\n## Other tools in the kit\n\n- `ros2 topic echo /turtle1/cmd_vel` prints messages as they arrive, the single most used debugging command.\n- `ros2 topic hz /turtle1/cmd_vel` measures publish rate.\n- `ros2 node list` and `ros2 node info <node>` show who is connected to what.\n- `ros2 interface list` shows every message type installed.\n- `rqt` and `rqt_graph` give a GUI view of the same information, with `rqt_graph` drawing the live node/topic graph as a diagram, invaluable for spotting a topic name typo where two nodes are 'connected' but actually on different names.\n\nThis type -> show -> pub loop is the fastest way to understand and exercise an unfamiliar topic without writing a line of code. In the exercise you will run exactly this sequence against an unknown topic in a simulated terminal: discover its type, inspect its structure, then publish one test message to it."
+    },
+    "exercise": {
+      "prompt": "In the simulated terminal there is one unknown topic, /turtle1/cmd_vel, already present on the graph. Using only the ros2 CLI, type the correct sequence of commands to (1) find the topic's message type, (2) display that message type's structure, and (3) publish a single test message to the topic. Run them in order, one command per line.",
+      "type": "terminal",
+      "editorLanguage": "bash",
+      "starterCode": "# A running system exposes ONE unknown topic: /turtle1/cmd_vel\n# You do NOT yet know its message type or fields.\n#\n# Your task, using only the ros2 CLI (one command per line):\n#   1. Find the MESSAGE TYPE of /turtle1/cmd_vel\n#   2. Show the STRUCTURE (fields) of that message type\n#   3. PUBLISH a single test message to /turtle1/cmd_vel\n#\n# Hint: the three commands you need are\n#   ros2 topic type ...\n#   ros2 interface show ...\n#   ros2 topic pub --once ...\n#\n# Type your commands below:\n",
+      "solutionCode": "ros2 topic type /turtle1/cmd_vel\nros2 interface show geometry_msgs/msg/Twist\nros2 topic pub --once /turtle1/cmd_vel geometry_msgs/msg/Twist \"{linear: {x: 2.0}, angular: {z: 1.8}}\"\n",
+      "supportFiles": {}
+    },
+    "verification": {
+      "strategy": "terminal_sequence",
+      "humanDescription": "Passed when the user runs, in order, a command that queries the type of /turtle1/cmd_vel, then shows the structure of geometry_msgs/msg/Twist, then publishes a single Twist message to /turtle1/cmd_vel.",
+      "checks": [
+        {
+          "kind": "command_sequence",
+          "description": "Three introspection/publish commands appear in the correct relative order.",
+          "params": {
+            "ordered": true,
+            "steps": [
+              {
+                "name": "discover-type",
+                "kind": "command_matches",
+                "regex": "^\\s*ros2\\s+topic\\s+type\\s+/turtle1/cmd_vel\\s*$"
+              },
+              {
+                "name": "discover-structure",
+                "kind": "command_matches",
+                "regex": "^\\s*ros2\\s+interface\\s+show\\s+geometry_msgs/msg/Twist\\s*$"
+              },
+              {
+                "name": "publish-message",
+                "kind": "command_matches",
+                "regex": "^\\s*ros2\\s+topic\\s+pub\\s+(--once\\s+|-1\\s+)?/turtle1/cmd_vel\\s+geometry_msgs/msg/Twist\\s+.+$"
+              }
+            ]
+          }
+        }
+      ],
+      "timeoutSeconds": 20,
+      "harnessNotes": "The harness runs a simulated ros2 CLI environment with a single pre-registered topic /turtle1/cmd_vel of type geometry_msgs/msg/Twist (no real DDS needed; a fixture maps topic->type and type->definition). Each typed line is captured and matched against the ordered regex steps. Step 1 must be exactly 'ros2 topic type /turtle1/cmd_vel'. Step 2 must be 'ros2 interface show geometry_msgs/msg/Twist' (the type string the simulator returned for step 1; the matcher can also accept the type echoed from step 1's stdout). Step 3 must be a 'ros2 topic pub' to /turtle1/cmd_vel with type geometry_msgs/msg/Twist and a non-empty YAML payload, with optional --once or -1 single-shot flag. Commands must appear in this relative order; extra exploratory commands (ros2 topic list, echo) between them are ignored. The simulator returns canned realistic stdout for each command so the user can read the type and fields just like a live system."
+    },
+    "quickReference": [
+      {
+        "api": "ros2 topic type /turtle1/cmd_vel",
+        "what": "show a topic's message type"
+      },
+      {
+        "api": "ros2 interface show geometry_msgs/msg/Twist",
+        "what": "show the message fields"
+      },
+      {
+        "api": "ros2 topic pub --once /turtle1/cmd_vel geometry_msgs/msg/Twist '{linear: {x: 2.0}, angular: {z: 1.8}}'",
+        "what": "publish one test message (YAML payload)"
+      },
+      {
+        "api": "ros2 topic echo /turtle1/cmd_vel",
+        "what": "print messages as they arrive"
+      },
+      {
+        "api": "ros2 topic hz /turtle1/cmd_vel",
+        "what": "measure a topic's publish rate"
+      },
+      {
+        "api": "ros2 node list / ros2 node info <node>",
+        "what": "see nodes and their connections"
+      }
+    ],
+    "hints": [
+      "When a topic is a mystery, you interrogate the running system in three moves: first ask what kind of data it carries, then ask what that data looks like inside, then send it one test message. No code -- just three ros2 commands in order.",
+      "The three commands are 'ros2 topic type', 'ros2 interface show', and 'ros2 topic pub'. Step 1 takes the topic name; step 2 takes the TYPE string that step 1 printed (a common mix-up is passing the topic name again); step 3 publishes one message.",
+      "Step 1: ros2 topic type /turtle1/cmd_vel -- this tells you the type is geometry_msgs/msg/Twist. Step 2: ros2 interface show geometry_msgs/msg/Twist to see its fields. Step 3 is a single-shot publish to the topic with that type and a YAML payload.",
+      "For step 3, include the single-shot flag (--once) or it will publish forever, and supply a YAML body, for example: ros2 topic pub --once /turtle1/cmd_vel geometry_msgs/msg/Twist \"{linear: {x: 2.0}, angular: {z: 1.8}}\". Run the three lines in that exact order."
+    ]
+  }
+]

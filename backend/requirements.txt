@@ -1,0 +1,6 @@
+fastapi>=0.110
+uvicorn[standard]>=0.29
+pydantic>=2.6
+websockets>=12.0
+# NOTE: rclpy, cv_bridge, sensor_msgs_py, tf2_ros, rosbag2_py are NOT pip deps.
+# They live inside the sandbox image (ros:humble / ros:jazzy), not the API process.

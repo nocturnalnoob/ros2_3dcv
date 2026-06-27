@@ -1,0 +1,45 @@
+# Local dev stack for ros2_3dcv.
+#
+#   1. build the sandbox image (the thing that runs/grades submissions):
+#        docker build -f backend/sandbox_image/Dockerfile \
+#          --build-arg DISTRO=humble -t ros2-3dcv-sandbox:humble backend/sandbox_image
+#   2. docker compose up
+#
+# The api service spawns one ros2-3dcv-sandbox container PER submission, so it
+# needs access to the host Docker daemon (docker-out-of-docker). The socket
+# mount below grants that. In production, run sandboxes via a dedicated,
+# locked-down worker pool (gVisor/Firecracker) rather than the host daemon.
+services:
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./curriculum:/app/curriculum:ro
+      - /var/run/docker.sock:/var/run/docker.sock  # spawn sandbox containers
+      # Job files live on a volume the HOST can also see, so the sibling sandbox
+      # container can bind-mount them (see HOST_JOBS_DIR in backend/sandbox.py).
+      - ./.sandbox-jobs:/sandbox-jobs
+    environment:
+      - SANDBOX_DISTRO=humble
+      - CURRICULUM_PATH=/app/curriculum/curriculum.json
+      - CONTAINER_JOBS_DIR=/sandbox-jobs
+      - HOST_JOBS_DIR=${PWD}/.sandbox-jobs
+
+  web:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "5173:5173"
+    environment:
+      # Reach the API by its compose service name, not localhost.
+      - API_PROXY_TARGET=http://api:8000
+      - CHOKIDAR_USEPOLLING=true   # file-watching/HMR across the bind mount
+    volumes:
+      - ./frontend:/app          # live-edit source -> hot reload
+      - /app/node_modules        # keep the image's installed deps
+    depends_on:
+      - api
